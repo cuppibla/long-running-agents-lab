@@ -12,6 +12,7 @@ export default function Console({ f, p }: { f: Folded; p: Progress | null }) {
     e.type === "clock_fired" || e.type === "clock_armed" || e.type === "clock_done" ? "clock"
     : e.type === "world" || e.type === "venue" ? "venue"
     : e.type === "file_saved" || e.type === "session_new" || e.type === "kill" || e.type === "boot" ? "page"
+    : e.type === "fence_refused" ? "fence" : e.type === "venue_409" ? "venue"
     : (e.source as string) === "clock" ? "server" : (e.source as string) === "stage" ? "server" : "lab";
   const text = (e: Record<string, unknown>) => {
     switch (e.type) {
@@ -26,6 +27,8 @@ export default function Console({ f, p }: { f: Folded; p: Progress | null }) {
       case "file_saved": return `saved ${e.path} · ${Object.entries(e.code as Record<string, boolean>).filter(([, v]) => v).map(([k]) => k).join(" ") || "as shipped"}`;
       case "boot": return `boot ${e.boot_id} · venue ${e.venue ? "up" : "down"} · boots ${e.boots}`;
       case "kill": return `💀 POST /api/kill → exit 3 · boot ${e.boot_id} ends`;
+      case "fence_refused": return `⛩ fence.py answered purchase · reason ${e.reason} · actually ${e.actual} · believed ${e.believed ?? "—"} · the venue was not called`;
+      case "venue_409": return `venue answered 409 ${e.error} on purchase(${e.section}) · the attempt reached the venue`;
       case "episode_started": return `── ${e.kind} ──`;
       case "episode_done": case "job_done": return "";
       case "error": return `✗ ${e.message}`;

@@ -20,10 +20,26 @@ export type CodeFacts = { recall: boolean; queue: boolean; fence: boolean; graph
 /** One run of the agent — the receipt lab/runner.py writes after every /api/say and /api/wake. */
 export type Wake = {
   ts: number; source: "stage" | "clock"; attended: boolean; who: string; session_id: string; message: string;
-  said: string[]; reply: string; awaiting: boolean; tools: string[]; calls: number; tools_in_file: string[]; kind: string;
+  said: string[]; reply: string; awaiting: boolean; tools: string[]; calls: number; turn_tools?: string[]; tools_in_file: string[]; kind: string;
   orders_new: Order[]; boot_id: string; elapsed: number; code: CodeFacts;
-  db?: { events?: number; interrupts?: number; compactions?: number; state?: Record<string, unknown> };
+  db?: { events?: number; interrupts?: number; compactions?: number; invocations?: number; state?: Record<string, unknown>; responses?: ToolResponse[] };
   artifacts?: string[]; memory_facts?: number;
+  tickets?: number;                       // queue tickets the venue held when this run ended (chapter III wants exactly one)
+};
+/** One tool response kept in the receipt — what the venue (or fence.py) handed the model. */
+export type ToolResponse = {
+  tool: "join_queue" | "check_queue" | "purchase"; invocation: string; turn: number | null;
+  ticket?: string; position?: number; ready?: boolean; status?: number | string; error?: string | boolean; message?: string;
+  reason?: string; believed_available?: number | null; actually_available?: number | null;
+  id?: string; event_id?: string; section?: string; seats?: number; total?: number; duplicate?: boolean;
+  by?: "fence" | "venue" | "?";
+};
+/** chapter III's receipt: one ticket, handed out under one boot and read back under another */
+export type KillReceipt = { session_id: string; ticket: string; boots: [string, string]; positions: [number | null, number | null]; tickets: number | null; ts: number; lit: boolean };
+/** chapter IV's receipts: the venue's own 409 (before) and fence.py's refusal (after) */
+export type FenceReceipt = {
+  before: { session_id: string; turn: number | null; error?: string; section?: string; order: Order | null; ts: number; reply: string } | null;
+  after: { session_id: string; turn: number | null; believed: number | null; actual: number | null; venue_409: boolean; order: Order | null; ts: number; reply: string; lit: boolean } | null;
 };
 export type Venue = {
   ok: boolean; order_count: number; orders: Order[]; tickets: number; clock: number; hang_armed?: boolean;
@@ -38,6 +54,7 @@ export type Progress = {
   wakes: Wake[]; wakes_total?: number; last_wake: Wake | null; stage: { session_id?: string; ts?: number | null };
   thread: Wake[]; clock_runs: number; clock_calls: number | null;
   before: Wake | null; after: Wake | null;
+  kill: KillReceipt | null; fence: FenceReceipt;
   venue: Venue; mode: string; wake_message: string; error: string | null;
 };
 export const getHealth = () => j<{ ok: boolean; boot_id: string; mode: string; venue: string; port: number }>("/health");

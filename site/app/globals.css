@@ -58,6 +58,7 @@ code { font-family: var(--font-mono), monospace; font-size: .92em; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
 .copy { flex: none; font-family: var(--font-mono), monospace; font-size: 10px; letter-spacing: .06em; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line-2); background: #fff; color: var(--sub); }
 .copy:hover { border-color: var(--amber-ink); color: var(--ink); }
+.copy.on { border-color: var(--amber); background: var(--amber-soft); color: var(--amber-ink); }
 
 /* avatars: the figurines are full-body on pastel, so every chip crops to the face */
 .av { display: inline-block; flex: none; background-color: var(--sky-2); background-repeat: no-repeat; background-size: 190%; background-position: 50% 40%; }
@@ -136,7 +137,7 @@ code { font-family: var(--font-mono), monospace; font-size: .92em; }
 .bubble.you .txt { color: var(--sub); font-style: italic; }
 .input { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .input .box { font: inherit; font-size: 12.5px; padding: 9px 13px; border-radius: 12px; border: 1px solid var(--line-2); background: #fff; color: var(--ink); min-width: 0; }
-.quick { display: flex; gap: 6px; align-items: center; }
+.quick { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .world { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 14px 12px; }
 .world .k { font-family: var(--font-mono), monospace; font-size: 9px; letter-spacing: .16em; color: var(--faint); text-transform: uppercase; margin-right: 4px; }
 .special { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 14px 14px; }
@@ -158,6 +159,12 @@ code { font-family: var(--font-mono), monospace; font-size: .92em; }
 .wire .edge.lit { stroke: var(--amber-ink); stroke-width: 1.8; }
 .wire .edge.back { stroke-dasharray: 4 3; } .wire .edge.back.lit { stroke-dasharray: none; stroke: var(--mint-ink); }
 .wire .pk { fill: var(--amber-ink); }
+.wire .gate { fill: #fff; stroke: var(--rule); stroke-width: 1; stroke-dasharray: 3 2; }
+.wire .gate.lit { fill: var(--mint-soft); stroke: var(--mint-ink); stroke-width: 1.4; stroke-dasharray: none; }
+.wire .gate.held { fill: var(--mint); }
+.wire text.g { font-size: 13px; fill: var(--ink); }
+.wire text.gl { font-size: 8px; fill: var(--faint); }
+.wire .gate.lit + text.g + text.gl { fill: var(--mint-ink); }
 .wire .lg { margin-top: 6px; font-size: 11.5px; color: var(--sub); line-height: 1.45; }
 
 /* ── chapter panel ── */

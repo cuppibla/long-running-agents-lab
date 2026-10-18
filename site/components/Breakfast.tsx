@@ -12,11 +12,13 @@ export default function Breakfast({ p, name }: { p: Progress | null; name: strin
   const before = p?.before;
   const after = p?.after;
   const o = after?.orders_new?.[0];
+  const k = p?.kill; const fa = p?.fence?.after;
+  const pos = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `#${n.toLocaleString()}`);
   const rows: [string, string, string, boolean][] = [
     ["I", "the clock", clock ? `${clock.calls} calls · nobody typed` : "—", Boolean(lit["1"])],
     ["II", "where a fact lives", after && o ? `${o.weekday} ×${o.seats} · ${after.memory_facts ?? ""} facts read` : before ? "a Tuesday · 0 facts read" : "—", Boolean(lit["2"])],
-    ["III", "the kill", lit["3"] ? "1 ticket · 2 boots" : "—", Boolean(lit["3"])],
-    ["IV", "old news", lit["4"] ? "refused before the venue" : "—", Boolean(lit["4"])],
+    ["III", "the kill", k ? `1 ticket · 2 boots · ${pos(k.positions[0])} → ${pos(k.positions[1])}` : "—", Boolean(lit["3"])],
+    ["IV", "old news", fa ? `refused before the venue${fa.order ? ` · ${fa.order.section} · $${Math.round(fa.order.total)}` : ""}` : "—", Boolean(lit["4"])],
     ["V", "the graph", lit["5"] ? `${p?.clock_runs} wake-ups · 1 ticket` : "—", Boolean(lit["5"])],
     ["VI", "the budget", lit["6"] ? "inside the limit you typed" : "—", Boolean(lit["6"])],
   ];

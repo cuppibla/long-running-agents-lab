@@ -18,7 +18,11 @@ import type { Progress, Wake } from "./api";
  *  state): without recall the 3am run asked "which show?" into the dark 2 of 3
  *  times and guessed the Tuesday once; with recall in, recall was the first call
  *  3 of 3 and the order was the Saturday show 3 of 3 (section A twice, C once).
- *  The copy below says that. III–VI carry the design's copy and tear in phases 2–3. */
+ *  The copy below says that. Chapters III and IV were walked on 2026-10-18: the same
+ *  queue ticket read back by a second boot (#14,203 → #14,168, a few seconds later at 1×), and
+ *  fence.py refusing a stale purchase (reason stale_plan, actually 0, believed null —
+ *  the old map lived in the conversation, not in temp: state) before the venue was
+ *  called; as shipped the venue itself answered 409 sold_out. V–VI tear in phase 3. */
 
 export type Where = "page" | "editor" | "workbench" | "watch";
 export type Step = { where: Where; do: string; say?: string };
@@ -57,6 +61,12 @@ export const ART = {
 /** the one sentence the clock sends, all lab long — lab/env.py has the same string */
 export const LINE = "The presale just opened. Get us tickets to the Amsterdam show.";
 export const PLAN = "Grab us two tickets the moment the presale opens. Keep checking.";
+/** chapter III and IV's sentences — scripts/walk.py says the same ones */
+export const WHICH = "The Saturday show, please.";
+export const WHERE_AM_I = "Where am I in line?";
+export const SEATS = "How much are the seats, and what's still available?";
+export const BUY = "Buy the two section A seats.";
+export const THEN_C = "Then section C, two seats.";
 export const CLOSING = "Waking up was never the hard part.";
 
 export const WHERE: Record<Where, string> = { page: "on the page", editor: "in the editor", workbench: "in the workbench", watch: "watch" };
@@ -91,6 +101,11 @@ const weekday = (w: Wake | null | undefined) => order(w)?.weekday || null;
 const factsN = (p: Progress | null) => p?.code?.memory_facts ?? 5;
 const ordersRead = (p: Progress | null): Read => { const v = p?.venue; const o = v?.orders?.slice(-1)[0]; return { k: "orders", v: String(v?.order_count ?? 0), s: o ? `${(o.weekday || "?").slice(0, 3).toLowerCase()} · ${o.seats}× ${o.section} · ${money(o.total)}` : "box office", cls: "" }; };
 const queueRead = (p: Progress | null): Read => { const q = p?.venue?.queue?.[0]; return q ? { k: "queue", v: `#${q.position.toLocaleString()}`, s: q.ready ? "at the front" : q.ticket, cls: "hi" } : { k: "queue", v: "—", s: p?.code?.queue ? "no ticket yet" : "no queue tool", cls: "hi" }; };
+const lastStage = (p: Progress | null) => stageWakes(p).slice(-1)[0] || null;
+const joinOf = (w: Wake | null | undefined) => (w?.db?.responses || []).filter((r) => r.tool === "join_queue").slice(-1)[0] || null;
+/** the newest stage run whose session holds a queue ticket (chapter III, before or after the kill) */
+const lastJoined = (p: Progress | null) => stageWakes(p).filter((w) => joinOf(w)).slice(-1)[0] || null;
+const pos = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `#${n.toLocaleString()}`);
 const phaseNote = (phase: number, what: string) => `this chapter is wired in phase ${phase} — the edit saves and the agent runs with it, but ${what} is not read yet, so the stub cannot tear here today.`;
 
 export const CHAPTERS: Chapter[] = [
@@ -163,42 +178,70 @@ export const CHAPTERS: Chapter[] = [
   { n: 3, roman: "III", name: "the kill", pill: ["edit", "EDIT ONE"], phase: 2,
     star: { img: "/art/capy.jpg", name: "the dispatcher", role: "keeps your place in line" },
     hook: "The queue is 14,203 long. Your laptop will sleep before it reaches the front. What survives?",
-    concept: "<code>join_queue</code> returns a <b>handle</b> to work that is not finished — a ticket and a position. Wrapped as a <code>LongRunningFunctionTool</code>, the run may <b>park</b> on it; <code>ResumabilityConfig</code> writes where the run had got to into the session store; the process can die. A new process reads <code>lab.db</code>, not memory — so it picks up at that tool, and does <b>not</b> take a second ticket.",
+    concept: "<code>join_queue</code> returns a <b>handle</b> to work that is not finished — a ticket and a position. Wrapped as a <code>LongRunningFunctionTool</code>, with <code>ResumabilityConfig</code> on the App, the run <b>parks</b> on that call: it says where it stands and stops — nothing loops, nothing holds a connection open. The ticket is in <b>session state</b>, and session state is in <code>lab.db</code>, not in the process. Kill the process. The next boot opens the same session; your next sentence is a new turn on it, and the agent checks the queue it is already in instead of joining again.",
     steps: [
       { where: "editor", do: "delete the “# ” — the agent gets join_queue (long-running) and check_queue" },
-      { where: "page", do: "ask for the tickets", say: LINE },
-      { where: "page", do: "press 💀 KILL THE PROCESS. The lamp goes dark, the server really dies, and comes back as the next boot" },
-      { where: "page", do: "ask where you are", say: "Where am I in line?" },
-      { where: "workbench", do: "the same session, after the reboot — the drawer shows the parked call" },
+      { where: "page", do: "ask for the tickets — it joins the queue for the Saturday show and says the position", say: LINE },
+      { where: "page", do: "press 💀 KILL THE PROCESS — the lights go out, the server really dies, and lab.sh brings it back as the next boot" },
+      { where: "page", do: "ask where you are, in the same conversation", say: WHERE_AM_I },
+      { where: "workbench", do: "the same session, after the reboot — the drawer shows the parked call and the one that followed" },
     ],
     edit: { file: "agent/concert/agent.py", symbol: "buyer_agent", marker: `# ${M.queue}`, afterMarker: M.queue, change: [`# ${M.queue}`, M.queue], fix: uncomment(M.queue), afterHint: "lands on your next message" },
-    sources: [["agent/concert/agent.py · the line", "agent/concert/agent.py"], ["agent/concert/tools.py · join_queue · check_queue", "agent/concert/tools.py"], ["lab/service.py · /api/kill + boot_id", "lab/service.py"], ["lab.sh · the keep-open loop", "lab.sh"], ["runs/boots.json", "runs/boots.json"]],
-    expect: "Position 14,203, then the lamp goes dark. The next boot answers on the same ticket: no second search, no second queue ticket, no replay.",
-    check: "one queue_ticket in state, seen under two boot_ids — and one ticket at the venue",
-    reads: (p) => [queueRead(p), { k: "boots", v: String(p?.boots ?? 1), s: p?.boot_id ? `this process · ${p.boot_id}` : "", cls: "hi" }, { k: "tickets", v: String(p?.venue?.tickets ?? 0), s: "venue", cls: "" }, { k: "the agent", v: p?.venue?.queue?.length ? "parked" : "awake", s: p?.venue?.queue?.length ? "in line" : p?.code?.queue ? "can wait" : "cannot wait", cls: "" }],
-    tiles: (p) => [{ k: "boots", v: String(p?.boots ?? 1), cls: "hi", s: (p?.boots ?? 1) > 1 ? "killed and back" : "nothing to survive yet" }, { k: "tickets at the venue", v: String(p?.venue?.tickets ?? 0), cls: p?.venue?.tickets === 1 ? "ok" : "", s: "one is the point" }],
-    next: (p) => !p?.code?.queue ? "delete the “# ” on the red line, then ask for the tickets on the stage" : phaseNote(2, "the ticket under two boots"),
-    wbGuide: () => ({ steps: ["Sessions: the one you were using is still here after the reboot", "open the ⚡ <b>join_queue</b> event: the response carries <code>status: waiting</code> and the ticket — a handle, not a result", "the next ⚡ is <b>check_queue</b>, after the kill, on the same ticket"], see: "a conversation that does not know it was dead." }) },
+    sources: [["agent/concert/agent.py · the line", "agent/concert/agent.py"], ["agent/concert/tools.py · join_queue · check_queue", "agent/concert/tools.py"], ["lab/service.py · /api/kill + boot_id", "lab/service.py"], ["lab.sh · the keep-open loop", "lab.sh"], ["lab/progress.py · kill_receipt", "lab/progress.py"], ["runs/boots.json", "runs/boots.json"]],
+    expect: "“Your position is 14,203”, then the lights go out. The next boot answers on the same ticket — one check_queue call, a lower number (the queue moves about 6 places a second at 1×: 14,168 in the walk) — with no second search and no second ticket.",
+    check: "one queue_ticket, handed out by join_queue under one boot and read back by check_queue under another — and one ticket at the venue",
+    reads: (p) => { const k = p?.kill; const w = lastJoined(p); const j = joinOf(w); const t = p?.venue?.tickets ?? 0; return [queueRead(p),
+      { k: "boots", v: String(p?.boots ?? 1), s: p?.boot_id ? `this process · ${p.boot_id}` : "", cls: "hi" },
+      { k: "tickets", v: String(t), s: "at the venue · one is the point", cls: t === 1 ? "ok" : t > 1 ? "bad" : "" },
+      { k: "the agent", v: k ? "back" : j ? "parked" : "awake", s: k ? `same ticket · boot ${k.boots[1]}` : j ? `in line · ${j.ticket}` : p?.code?.queue ? "can wait" : "cannot wait", cls: "" }]; },
+    tiles: (p) => { const k = p?.kill; const w = lastJoined(p); const j = joinOf(w);
+      if (k) return [{ k: "the ticket", v: k.ticket, cls: "ok", s: `${pos(k.positions[0])} → ${pos(k.positions[1])} · handed out by boot ${k.boots[0]}, read back by boot ${k.boots[1]}` },
+        { k: "boots it lived through", v: "2", cls: "hi", s: "the process died in between; lab.db did not" },
+        { k: "tickets at the venue", v: String(k.tickets ?? "?"), cls: k.tickets === 1 ? "ok" : "bad", s: k.tickets === 1 ? "no second join_queue — it checked the queue it was already in" : "more than one — a second join_queue happened" }];
+      if (j && w) return [{ k: "the ticket", v: j.ticket || "—", cls: "hi", s: `${pos(j.position)} · boot ${w.boot_id} · ${w.boot_id === p?.boot_id ? "now press 💀" : "that boot is gone — ask “Where am I in line?”"}` }];
+      return []; },
+    next: (p) => { const k = p?.kill; const w = lastJoined(p); const s = lastStage(p);
+      if (!p?.code?.queue) return "delete the “# ” on the red line (or press “apply the edit for me”), then ask for the tickets on the stage";
+      if (!w) return s && !s.tools.includes("join_queue") && /which/i.test(s.reply) ? "it asked which show instead of reading recall — say “The Saturday show, please.” and it joins the queue" : "ask for the tickets on the stage — it joins the queue and tells you the position";
+      if (w.boot_id === p?.boot_id && !k) return `in line at ${pos(joinOf(w)?.position)} on boot ${w.boot_id}. Press 💀 KILL THE PROCESS, wait for the lights, then ask “Where am I in line?”`;
+      if (!k) return `back as boot ${p?.boot_id}. Ask “Where am I in line?” in the same conversation — the ticket is in lab.db, not in the dead process`;
+      if (!p?.lit?.["3"]) return `the ticket came back under two boots, but the venue holds ${k.tickets} tickets — RESET the venue, ↻ new conversation, and run the chapter once more`;
+      return "✓ stub III torn. Same ticket, two boots, no second queue. Chapter IV: it is back from the wait holding a seat map — and the seats on it are gone."; },
+    wbGuide: (p) => { const sid = p?.kill?.session_id || lastJoined(p)?.session_id || p?.stage?.session_id; return { steps: [`Sessions: <b>${sid || "web-…"}</b> is still here after the reboot — adk web reads the same lab.db`, "open the ⚡ <b>join_queue</b> event: its response is <code>status: waiting</code> and the ticket — a handle, not a result; the <b>State</b> tab holds <code>queue_ticket</code>", "the next ⚡ is <b>check_queue</b>, after the kill, on the same ticket — a new turn, no second join_queue"], see: "a conversation that does not know it was dead." }; } },
 
   { n: 4, roman: "IV", name: "old news", pill: ["edit", "EDIT ONE"], phase: 2,
     star: { img: "/art/boxoffice-hero.jpg", name: "the box office", role: "stamps the same order once" },
     hook: "It came back from the wait holding a seat map. Those seats sold twelve minutes in. Why did it buy anyway?",
-    concept: "An agent that is <i>missing</i> a fact asks. An agent holding an <i>old</i> fact just acts — nothing is missing from its context, the wrong thing is present. A <code>before_tool_callback</code> runs in the instant before <code>purchase</code>: it re-reads live inventory, and <b>returning a dict short-circuits the tool</b>, so the stale plan never reaches the venue. (The <code>Idempotency-Key</code> on every purchase is already in the shipped code; BREAK THE NEXT PURCHASE on the stage shows the venue returning the same order twice.)",
+    concept: "An agent that is <i>missing</i> a fact asks. An agent holding an <i>old</i> fact just acts — nothing is missing from its context, the wrong thing is present. The seat map it read while waiting is still in the <b>conversation</b>; its <code>temp:seatmap</code> copy died with that turn, which does not help. A <code>before_tool_callback</code> runs in the instant before <code>purchase</code>: it re-reads live inventory, and <b>returning a dict short-circuits the tool</b>, so the stale plan never reaches the venue. (The <code>Idempotency-Key</code> on every purchase is already in the shipped code; BREAK THE NEXT PURCHASE shows the venue returning the same order twice.)",
     steps: [
       { where: "editor", do: "delete the “# ” — the fence runs before every purchase" },
+      { where: "page", do: "↻ new conversation, then ask for the tickets — it joins the queue", say: LINE },
+      { where: "page", do: "ask about the seats while it waits — A 400 · B 900 · C 1200 become sentences in the conversation", say: SEATS },
       { where: "page", do: "press SELL THE GOOD SEATS, then SKIP THE WAIT" },
-      { where: "page", do: "tell it to buy from what it remembers", say: "Buy the two section A seats." },
-      { where: "watch", do: "the stage: the fence’s refusal arrives before any call to the venue" },
+      { where: "page", do: "tell it to buy from what it remembers", say: BUY },
+      { where: "page", do: "pick again — a fresh plan passes the fence", say: THEN_C },
       { where: "workbench", do: "open the purchase event — its response was written by fence.py, not the venue" },
     ],
     edit: { file: "agent/concert/agent.py", symbol: "buyer_agent", marker: `# ${M.fence}`, afterMarker: M.fence, change: [`# ${M.fence}`, M.fence], fix: uncomment(M.fence), afterHint: "lands on your next message" },
-    sources: [["agent/concert/agent.py · the line", "agent/concert/agent.py"], ["agent/concert/fence.py · refresh_before_purchase", "agent/concert/fence.py"], ["agent/concert/tools.py · purchase · Idempotency-Key", "agent/concert/tools.py"], ["venue/app.py · /purchase", "venue/app.py"]],
-    expect: "Before: ⚡ purchase → the venue answers 409 sold_out, and only then a re-read. After: the fence answers first — believed 400, actually 0 — and the venue is never called with the stale plan.",
-    check: "a stale_plan refusal from fence.py in the log, no 409 from the venue for that session, and an order in another section",
-    reads: (p) => { const a = p?.venue?.section_a?.find((e) => e.weekday === "Saturday"); return [queueRead(p), { k: "section A", v: a ? `${a.available} left` : "—", s: "saturday · amsterdam", cls: a && a.available === 0 ? "bad" : "" }, { k: "fence", v: p?.code?.fence ? "armed" : "off", s: p?.code?.fence ? "before every purchase" : "purchase goes straight through", cls: p?.code?.fence ? "ok" : "" }, ordersRead(p)]; },
-    tiles: () => [],
-    next: (p) => !p?.code?.fence ? "delete the “# ” on the red line, then SELL THE GOOD SEATS → SKIP THE WAIT → say “Buy the two section A seats.”" : phaseNote(2, "the fence’s refusal"),
-    wbGuide: () => ({ steps: ["open the ⚡ <b>purchase</b> event", "its ✓ response reads <code>reason: stale_plan · believed_available: 400 · actually_available: 0</code> — a dict returned by the callback", "the next ⚡ is <b>get_seatmap</b>, unprompted; then purchase again, another section"], see: "the attempt, the refusal written by your code, and the retry — three events in a row." }) },
+    sources: [["agent/concert/agent.py · the line", "agent/concert/agent.py"], ["agent/concert/fence.py · refresh_before_purchase", "agent/concert/fence.py"], ["agent/concert/tools.py · purchase · Idempotency-Key", "agent/concert/tools.py"], ["venue/app.py · /purchase", "venue/app.py"], ["lab/progress.py · fence_receipt", "lab/progress.py"]],
+    expect: "As shipped, with the seat map in the conversation: purchase reaches the venue, 409 sold_out comes back, no order, and it asks you to pick again (with no map in the conversation it reads one first, and nothing is stale). With the fence: the refusal is written by fence.py — reason stale_plan, actually 0 — before the venue hears anything; then “section C” goes through: 2× C, $190.",
+    check: "a stale_plan refusal from fence.py, no 409 from the venue in that turn, and an order in another section",
+    reads: (p) => { const a = p?.venue?.section_a?.find((e) => e.weekday === "Saturday"); return [queueRead(p), { k: "section A", v: a ? `${a.available} left` : "—", s: "saturday · amsterdam · live", cls: a && a.available === 0 ? "bad" : "" }, { k: "fence", v: p?.code?.fence ? "armed" : "off", s: p?.code?.fence ? "before every purchase" : "purchase goes straight through", cls: p?.code?.fence ? "ok" : "" }, ordersRead(p)]; },
+    tiles: (p) => { const f = p?.fence; const out: Tile[] = [];
+      if (f?.before) out.push({ k: "as shipped · who said no", v: "the venue · 409", cls: "bad", s: `sold_out — after purchase reached it. ${f.before.order ? `then ${f.before.order.section} · ${money(f.before.order.total)}` : "no order; it handed the re-read back to you"}` });
+      if (f?.after) out.push({ k: "with the fence · who said no", v: "fence.py", cls: "ok", s: `reason stale_plan · actually ${f.after.actual ?? 0} · believed ${f.after.believed ?? "— (the old map lived in the conversation; temp: was gone)"}` },
+        { k: "venue calls in that turn", v: f.after.venue_409 ? "1" : "0", cls: f.after.venue_409 ? "bad" : "ok", s: f.after.venue_409 ? "the venue still answered 409" : "the attempt never left the process" },
+        ...(f.after.order ? [{ k: "the order", v: `${f.after.order.section} · ${money(f.after.order.total)}`, cls: "hi" as const, s: "a fresh plan — the live map agreed, so the fence let it through" }] : []));
+      return out; },
+    next: (p) => { const f = p?.fence; const on = p?.code?.fence; const s = lastStage(p);
+      const noMap = s && s.tools.includes("join_queue") && !s.tools.includes("get_seatmap") && !s.tools.includes("purchase");
+      if (noMap) return "it is in the queue but has not read a seat map yet — ask about the seats again until it lists A 400 · B 900 · C 1200. With nothing old in the conversation there is nothing to act on";
+      if (!on && !f?.before) return "see it fail first, as shipped: ask for the tickets → ask about the seats → SELL THE GOOD SEATS → SKIP THE WAIT → “Buy the two section A seats.” — the venue itself answers 409";
+      if (!on) return "that was the venue saying no, after the attempt reached it. Now delete the “# ” on the red line, RESET the venue, and ↻ new conversation";
+      if (!f?.after) return "↻ new conversation → ask for the tickets → ask about the seats → SELL THE GOOD SEATS → SKIP THE WAIT → “Buy the two section A seats.” — this time your code answers first";
+      if (!p?.lit?.["4"]) return f.after.venue_409 ? "the venue still answered a 409 in that turn — RESET, ↻ new conversation, and run the five sentences again" : "refused before the venue heard anything. Say “Then section C, two seats.” — a fresh plan goes through";
+      return "✓ stub IV torn. Refused by your code, before the venue. Chapter V: at 3am, who decides the order of things?"; },
+    wbGuide: (p) => ({ steps: [`open <b>${p?.fence?.after?.session_id || "your session"}</b> and find the ⚡ <b>purchase</b> event for section A`, "its response reads <code>reason: stale_plan · actually_available: 0</code> — a dict returned by the callback. The venue’s feed shows <i>calling purchase</i> with no order behind it", "the next ⚡ <b>purchase</b> (section C) carries the venue’s own answer: an order id"], see: "the attempt, the refusal written by your code, and the purchase that passed — in a row." }) },
 
   { n: 5, roman: "V", name: "the graph", pill: ["edit", "SWAP ONE"], phase: 3,
     star: { img: "/art/rook.jpg", name: "the agent", role: "the last node of the graph" },

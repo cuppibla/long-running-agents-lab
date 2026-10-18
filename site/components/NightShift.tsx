@@ -16,9 +16,9 @@ export default function NightShift({ n, p, f }: { n: number; p: Progress | null;
   if ((p?.wakes || []).some((w) => w.source === "stage")) add("trigger", "sessions");
   if (lit["2"] || code?.recall) add("memory");
   if (lit["2"]) add("prefs", "artifacts", "sessions");
-  if (lit["3"]) add("sessions", "trigger");
+  if (lit["3"] || p?.kill) add("sessions", "trigger");
   if (lit["4"] || code?.fence) add("fence");
-  if (lit["4"]) add("venue");
+  if (lit["4"]) add("venue", "gate");
   if (code?.graph || lit["5"]) add("graph", "back");
   if (code?.budget || lit["6"]) add("budget");
   if ((p?.venue?.order_count || 0) > 0) add("venue");
@@ -28,8 +28,8 @@ export default function NightShift({ n, p, f }: { n: number; p: Progress | null;
   const legend =
     n === 1 ? (lit["1"] ? "the clock posted one sentence to /api/wake; a Runner ran the agent; nobody typed." : "nothing moves between messages. a trigger is an endpoint with a Runner behind it; a triggerer is a clock that calls it.") :
     n === 2 ? (code?.recall ? "recall() reads memory/userx.md through BaseMemoryService. user:prefs lives in every session; temp: dies with the invocation." : "four stores, one of them unread: the memory file. the conversation is the worst place for a fact.") :
-    n === 3 ? "a LongRunningFunctionTool returns a handle; ResumabilityConfig writes the parked run into lab.db; a new process reads it back." :
-    n === 4 ? "the fence runs before purchase reaches the venue — a dict returned there short-circuits the tool." :
+    n === 3 ? (p?.kill ? `one ticket (${p.kill.ticket}) handed out by boot ${p.kill.boots[0]} and read back by boot ${p.kill.boots[1]} — lab.db outlived the process.` : code?.queue ? "join_queue hands back a handle; the run parks on it; the ticket is already in lab.db. Press 💀, then ask again." : "a LongRunningFunctionTool returns a handle; ResumabilityConfig lets the run park on it; a new process reads lab.db back.") :
+    n === 4 ? (lit["4"] ? "⛩ the fence refused once before the venue was asked; the order that followed came from a fresh read." : code?.fence ? "⛩ refresh_before_purchase runs before every purchase — a dict returned there never reaches the venue." : "purchase goes straight to the venue with whatever seat map the conversation holds. The gate before the venue is not there yet.") :
     n === 5 ? (code?.graph ? "the graph is the root: open → pick_show → queue_up → check_front ⏸ → brief → buyer_agent. the clock answers the pause." : "the model orders the steps. a Workflow makes the rules nodes and keeps the model where judgement is.") :
     n === 6 ? "the same RequestInput, aimed at a person. someone_is_there() is a fact about the request: /api/say marks it, /api/wake does not." :
     "two URIs and one environment variable later, the same agent runs on Cloud Run with Cloud Scheduler as its clock.";
@@ -44,13 +44,16 @@ export default function NightShift({ n, p, f }: { n: number; p: Progress | null;
         <rect className={"box" + cls("trigger")} x="152" y="14" width="150" height="44" rx="8" /><text className="t" x="227" y="33" textAnchor="middle">▶ the trigger</text>
         {cloud ? <text className="cloud" x="227" y="48" textAnchor="middle">Cloud Run · pubsub trigger</text> : <text x="227" y="48" textAnchor="middle">a Runner · /api/say | wake</text>}
         <path className={"edge" + cls("graph")} d="M302 36 H320" />
-        <rect className={"box" + cls("graph")} x="322" y="8" width="346" height="56" rx="8" /><text className="t" x="495" y="27" textAnchor="middle">{code?.graph ? "the graph · nightly" : "the agent · buyer_agent"}</text>
-        <text x="495" y="43" textAnchor="middle">{code?.graph ? `${L.has("budget") ? "budget → " : ""}open → pick → queue → check_front ⏸ → brief → buyer` : "a conversation: the model picks the next step"}</text>
-        <text x="495" y="57" textAnchor="middle" style={{ fill: L.has("fence") ? "var(--mint-ink)" : "var(--faint)" }}>{L.has("fence") ? "⛩ fence: refresh_before_purchase" : "fence not yet"}</text>
-        <path className={"edge" + cls("venue")} d="M668 36 H688" />
+        <rect className={"box" + cls("graph")} x="322" y="8" width="326" height="56" rx="8" /><text className="t" x="485" y="27" textAnchor="middle">{code?.graph ? "the graph · nightly" : "the agent · buyer_agent"}</text>
+        <text x="485" y="43" textAnchor="middle">{code?.graph ? `${L.has("budget") ? "budget → " : ""}open → pick → queue → check_front ⏸ → brief → buyer` : "a conversation: the model picks the next step"}</text>
+        <text x="485" y="57" textAnchor="middle" style={{ fill: L.has("fence") ? "var(--mint-ink)" : "var(--faint)" }}>{L.has("fence") ? "before_tool_callback=refresh_before_purchase" : "no before_tool_callback yet"}</text>
+        <path className={"edge" + cls("venue")} d="M648 36 H656" />
+        <rect className={"gate" + cls("fence") + (L.has("gate") ? " held" : "")} x="656" y="22" width="28" height="28" rx="6" /><text className="g" x="670" y="42" textAnchor="middle">⛩</text>
+        <text className="gl" x="670" y="60" textAnchor="middle">{L.has("gate") ? "refused ×1" : L.has("fence") ? "the fence" : "no fence"}</text>
+        <path className={"edge" + cls("venue")} d="M684 36 H688" />
         <rect className={"box" + cls("venue")} x="690" y="14" width="66" height="44" rx="8" /><text className="t" x="724" y="33" textAnchor="middle">🎪 venue</text><text x="724" y="48" textAnchor="middle">in-process</text>
         <path className={"edge back" + cls("back")} d="M560 64 V84 H63 V58" /><text x="312" y="80" textAnchor="middle" style={{ fill: L.has("back") ? "var(--mint-ink)" : "var(--faint)" }}>wake me again · RequestInput answered by a clock</text>
-        <rect className={"box store" + cls("sessions")} x="4" y="104" width="170" height="38" rx="8" /><text className="t" x="89" y="121" textAnchor="middle">{cloud ? "Cloud SQL" : "lab.db · sessions + state"}</text><text x="89" y="135" textAnchor="middle">I · III · V · VI</text>
+        <rect className={"box store" + cls("sessions")} x="4" y="104" width="170" height="38" rx="8" /><text className="t" x="89" y="121" textAnchor="middle">{cloud ? "Cloud SQL" : "lab.db · sessions + state"}</text><text x="89" y="135" textAnchor="middle" style={p?.kill ? { fill: "var(--mint-ink)" } : undefined}>{p?.kill ? `III · read by boot ${p.kill.boots[0]} and boot ${p.kill.boots[1]}` : "I · III · V · VI"}</text>
         <rect className={"box store" + cls("prefs")} x="186" y="104" width="150" height="38" rx="8" /><text className="t" x="261" y="121" textAnchor="middle">user:prefs</text><text x="261" y="135" textAnchor="middle">II · every session</text>
         <rect className={"box store" + cls("memory")} x="348" y="104" width="190" height="38" rx="8" /><text className="t" x="443" y="121" textAnchor="middle">{cloud ? "gs://…/memory/userx.md" : "memory/userx.md"}</text><text x="443" y="135" textAnchor="middle">II · recall() · remember()</text>
         <rect className={"box store" + cls("artifacts")} x="550" y="104" width="206" height="38" rx="8" /><text className="t" x="653" y="121" textAnchor="middle">{cloud ? "gs://…/artifacts" : "artifacts/"}</text><text x="653" y="135" textAnchor="middle">II · seat maps · never in the prompt</text>

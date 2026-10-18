@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getJob, startJob, type Job, type Progress, type Wake } from "@/lib/api";
 import type { Folded } from "@/lib/useEvents";
-import { ART, CHAPTERS, LINE, PLAN } from "@/lib/chapters";
+import { ART, CHAPTERS, LINE } from "@/lib/chapters";
 
 /** The stage: ONE big character per chapter with a name plate, four readouts,
  *  the talk box (the MonsterTix front door — it posts to /api/say, and if the
@@ -15,15 +15,16 @@ const Av = ({ who }: { who: "rook" | "sleeper" | "clock" | "boxoffice" | "sam" }
   <span className={`av av-${who}`} style={{ backgroundImage: `url(${ART.av[who]})` }} aria-hidden />
 );
 
-export default function Stage({ chapter, p, f, name, busy, onSay, onWorld, onKill, onChanged }: {
+export default function Stage({ chapter, p, f, name, busy, onSay, onWorld, onKill, onChanged, onNew }: {
   chapter: number; p: Progress | null; f: Folded; name: string; busy: boolean;
-  onSay: (text: string) => void; onWorld: (action: string, body?: Record<string, unknown>) => Promise<void>; onKill: () => void; onChanged: () => void;
+  onSay: (text: string) => void; onWorld: (action: string, body?: Record<string, unknown>) => Promise<void>; onKill: () => void; onChanged: () => void; onNew: () => void;
 }) {
   const c = CHAPTERS[chapter - 1];
   const after = chapter === 2 && Boolean(p?.lit?.["2"]);
   const img = after && c.star.afterImg ? c.star.afterImg : c.star.img;
   const role = after && c.star.afterRole ? c.star.afterRole : c.star.role;
-  const defaultLine = c.steps.find((s) => s.say)?.say || LINE;
+  const quick = c.steps.filter((s) => s.say).map((s) => s.say as string);     // this chapter's sentences, in order
+  const defaultLine = quick[0] || LINE;
   const [text, setText] = useState(defaultLine);
   const lastDefault = useRef(defaultLine);
   useEffect(() => { if (text === lastDefault.current || !text) setText(defaultLine); lastDefault.current = defaultLine; }, [defaultLine]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -67,7 +68,7 @@ export default function Stage({ chapter, p, f, name, busy, onSay, onWorld, onKil
               ? <div className="bubble"><Av who="clock" /><div><div className="who">the clock · 3:00 · {w.session_id}</div><div className="txt">{w.message}</div></div></div>
               : <div className="bubble you"><Av who="sleeper" /><div><div className="who">{w.who || "you"}</div><div className="txt">{w.message}</div></div></div>}
             <div className="bubble"><Av who="rook" /><div>
-              <div className="who">the agent{w.tools.length ? ` · called ${w.tools.join(" · ")}` : " · no tool call"}{w.orders_new.length ? ` · bought ${w.orders_new.map((o) => `${o.seats}× ${o.section} ${(o.weekday || "").slice(0, 3)}`).join(", ")}` : ""}</div>
+              <div className="who">the agent{(w.turn_tools ?? w.tools).length ? ` · called ${(w.turn_tools ?? w.tools).join(" · ")}` : " · no tool call"}{w.orders_new.length ? ` · bought ${w.orders_new.map((o) => `${o.seats}× ${o.section} ${(o.weekday || "").slice(0, 3)}`).join(", ")}` : ""}{w.boot_id && p?.boot_id && w.boot_id !== p.boot_id ? ` · boot ${w.boot_id}` : ""}</div>
               <div className={"txt" + (w.awaiting ? " ask" : "")}>{w.reply || (w.awaiting ? "(the run stopped on a question)" : "(no text)")}</div>
             </div></div>
           </div>
@@ -81,8 +82,8 @@ export default function Stage({ chapter, p, f, name, busy, onSay, onWorld, onKil
           <button className="btn night on" disabled={busy || f.running} onClick={() => text.trim() && onSay(text)}>{busy ? "…" : "send"}</button>
         </div>
         <div className="quick">
-          <button className="copy" onClick={() => setText(PLAN)}>the plan</button>
-          <button className="copy" onClick={() => setText(LINE)}>the 3am sentence</button>
+          {quick.map((q) => <button key={q} className={"copy" + (text === q ? " on" : "")} onClick={() => setText(q)} title={q}>{q.length > 34 ? q.slice(0, 32) + "…" : q}</button>)}
+          <button className="copy" onClick={onNew} title="a fresh session id — nothing is deleted; the old conversation stays in lab.db">↻ new conversation</button>
         </div>
       </div>
 

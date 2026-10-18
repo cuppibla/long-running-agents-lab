@@ -78,6 +78,7 @@ export default function LabPage() {
     if (age > 20) return;
     if (lastBig.type === "file_saved") setNudge("the file changed — adk web re-reads it on its next run");
     else if (lastBig.type === "run_replied" && lastBig.source === "clock") setNudge(`the clock made session ${lastBig.session_id} — open it in adk web`);
+    else if (lastBig.type === "fence_refused") setNudge("fence.py answered purchase — open the event in adk web");
   }, [lastBig?.i]);   // eslint-disable-line react-hooks/exhaustive-deps
   const openDrawer = (on: boolean) => { setDrawer(on); if (on) setNudge(""); };
 
@@ -148,7 +149,7 @@ export default function LabPage() {
       <Rail current={chapter} lit={lit} onPick={go} />
 
       <div className="main">
-        <Stage chapter={chapter} p={p} f={f} name={name} busy={busy} onSay={onSay} onWorld={onWorld} onKill={onKill} onChanged={refresh} />
+        <Stage chapter={chapter} p={p} f={f} name={name} busy={busy} onSay={onSay} onWorld={onWorld} onKill={onKill} onChanged={refresh} onNew={newConversation} />
         <div className="col">
           <NightShift n={chapter} p={p} f={f} />
           <Chapter n={chapter} p={p} f={f} onGo={go} onChanged={refresh} onCheck={() => setCheck(true)} onWorkbench={() => openDrawer(true)} onWake={onWake} />

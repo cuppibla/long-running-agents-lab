@@ -22,7 +22,7 @@ export type Folded = {
   log: Ev[];
 };
 
-const BIG = new Set(["run_replied", "file_saved", "job_done", "world", "seeded", "kill", "boot", "error"]);
+const BIG = new Set(["run_replied", "file_saved", "job_done", "world", "seeded", "kill", "boot", "error", "fence_refused", "venue_409"]);
 
 export function useEvents(): Folded {
   const [log, setLog] = useState<Ev[]>([]);

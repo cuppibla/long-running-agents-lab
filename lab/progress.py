@@ -2,8 +2,10 @@
 
     I    a run the clock started (a wake-* session) made at least one tool call     runs/state.json ← lab.db
     II   a run with recall in its tool calls bought the Saturday show (ms-ams-01)     runs/state.json ← lab.db + venue.db
-    III  the same queue ticket read under two boot ids, one ticket at the venue       (phase 2)
-    IV   a stale_plan refusal from fence.py, no 409 from the venue, an order elsewhere (phase 2)
+    III  one queue ticket: join_queue handed it out under one boot id, check_queue read it back
+         under another, in the same session — and the venue holds exactly one ticket   runs/state.json ← lab.db + venue.db
+    IV   in one turn: fence.py answered purchase with reason stale_plan (the venue was never asked:
+         no 409 in that turn), and the order that followed is in another section        runs/state.json ← lab.db + venue.db
     V    an adk_request_input, ≥ 2 wake-ups, one ticket, one order                    (phase 3)
     VI   budget in session state == a sentence you typed, one order, an unattended wake that did not ask (phase 3)
     VII  I–VI
@@ -99,6 +101,63 @@ def venue() -> dict:
             "activity": [{"ts": a["ts"], "kind": a["kind"], "message": a["message"]} for a in s.get("agent_events", [])[:12]]}
 
 
+def kill_receipt(wakes: list[dict]) -> dict | None:
+    """Chapter III. The same ticket, handed out by join_queue in one process and read
+    back by check_queue in another, in one session; the venue holding one ticket when
+    it was read back. Returns the newest such pair, or None."""
+    found = None
+    by_sid: dict[str, list[dict]] = {}
+    for w in wakes:
+        if w.get("session_id"):
+            by_sid.setdefault(w["session_id"], []).append(w)
+    for sid, ws in by_sid.items():
+        for w2 in ws:
+            if not (w2.get("code") or {}).get("queue"):
+                continue
+            checks = [r for r in ((w2.get("db") or {}).get("responses") or []) if r.get("tool") == "check_queue" and r.get("ticket")]
+            for c in checks:
+                for w1 in ws:
+                    if w1 is w2 or w1.get("boot_id") == w2.get("boot_id") or w1.get("ts", 0) > w2.get("ts", 0):
+                        continue
+                    joins = [r for r in ((w1.get("db") or {}).get("responses") or []) if r.get("tool") == "join_queue" and r.get("ticket") == c["ticket"]]
+                    if joins and (c.get("turn") is None or joins[0].get("turn") is None or c["turn"] > joins[0]["turn"]):
+                        row = {"session_id": sid, "ticket": c["ticket"], "boots": [w1.get("boot_id"), w2.get("boot_id")],
+                               "positions": [joins[0].get("position"), c.get("position")], "tickets": w2.get("tickets"),
+                               "ts": w2.get("ts"), "lit": w2.get("tickets") == 1}
+                        if found is None or row["ts"] > found["ts"]:
+                            found = row
+    return found
+
+
+def fence_receipt(wakes: list[dict]) -> dict | None:
+    """Chapter IV. One run in which fence.py refused purchase with reason stale_plan,
+    the venue answered no 409 in that same turn, and an order in another section
+    followed (in that run, or a later run of the same session). Also returns the
+    before-state: the newest run in which the venue itself answered 409 sold_out."""
+    out: dict[str, Any] = {"before": None, "after": None}
+    for w in wakes:
+        rs = (w.get("db") or {}).get("responses") or []
+        orders = w.get("orders_new") or []
+        for r in rs:
+            if r.get("tool") != "purchase":
+                continue
+            if r.get("by") == "venue" and r.get("status") == 409:
+                out["before"] = {"session_id": w.get("session_id"), "turn": r.get("turn"), "error": r.get("error"), "section": r.get("section"),
+                                 "order": orders[0] if orders else None, "ts": w.get("ts"), "reply": (w.get("reply") or "")[:200]}
+            if r.get("by") == "fence" and r.get("reason") == "stale_plan" and (w.get("code") or {}).get("fence"):
+                same_turn = [x for x in rs if x.get("tool") == "purchase" and x.get("turn") == r.get("turn")]
+                venue_409 = any(x.get("by") == "venue" and x.get("status") == 409 for x in same_turn)
+                later = [o for o in orders if o.get("section") and o.get("section") != (r.get("section") or "A")]
+                if not later:
+                    for w2 in wakes:
+                        if w2.get("session_id") == w.get("session_id") and w2.get("ts", 0) > w.get("ts", 0):
+                            later += [o for o in (w2.get("orders_new") or []) if o.get("section") and o.get("section") != "A"]
+                out["after"] = {"session_id": w.get("session_id"), "turn": r.get("turn"), "believed": r.get("believed_available"),
+                                "actual": r.get("actually_available"), "venue_409": venue_409, "order": later[0] if later else None,
+                                "ts": w.get("ts"), "reply": (w.get("reply") or "")[:200], "lit": (not venue_409) and bool(later)}
+    return out
+
+
 def read() -> dict[str, Any]:
     global _last_good, _cache
     try:
@@ -107,10 +166,14 @@ def read() -> dict[str, Any]:
         clock_wakes = [w for w in wakes if w.get("source") == "clock"]
         recalled = [w for w in wakes if "recall" in (w.get("tools") or [])]
         saturday = [w for w in recalled if any(o.get("event_id") == SATURDAY for o in w.get("orders_new") or [])]
+        kill = kill_receipt(wakes)
+        fence = fence_receipt(wakes)
         lit = {
             1: any((w.get("calls") or 0) >= 1 for w in clock_wakes),
             2: bool(saturday),
-            3: False, 4: False, 5: False, 6: False,            # phases 2 and 3
+            3: bool(kill and kill.get("lit")),
+            4: bool(fence.get("after") and fence["after"].get("lit")),
+            5: False, 6: False,                                 # phase 3
         }
         lit[7] = all(lit[k] for k in range(1, 7))
         v = venue()
@@ -126,6 +189,7 @@ def read() -> dict[str, Any]:
             "clock_runs": len(clock_wakes), "clock_calls": last_clock["calls"] if last_clock else None,
             "before": next((w for w in clock_wakes if "recall" not in (w.get("tools") or [])), None),
             "after": saturday[-1] if saturday else None,
+            "kill": kill, "fence": fence,
             "venue": v, "mode": env.MODE, "wake_message": env.WAKE_MESSAGE, "error": None,
         }
         _last_good = out

@@ -12,8 +12,8 @@ one gesture on the page, lit by a receipt the process produced.
 |---|---|---|---|
 | I · the clock | `instruction=` is read only when a message arrives; a **trigger** (an endpoint + a `Runner`) and a **triggerer** (a clock) | say the plan, hands down, press 🐓 WAKE IT AT 3AM | a `wake-…` session the clock created, with ≥ 1 tool call |
 | II · where a fact lives | `temp:` · session state · `user:` · a memory file; `recall()` through `BaseMemoryService`; compaction | delete one `# ` on `recall, remember,` · 🐓 again | a wake whose events include `recall` and whose order is the Saturday show |
-| III · the kill | `LongRunningFunctionTool` returns a handle; `ResumabilityConfig` parks the run in the store | delete one `# ` · ask for tickets · 💀 KILL · ask again | the same queue ticket under two boot ids, one ticket at the venue *(phase 2)* |
-| IV · old news | `before_tool_callback` re-reads the world; returning a dict short-circuits the tool | delete one `# ` · SELL THE GOOD SEATS · SKIP · "buy section A" | a `stale_plan` refusal before the venue is called *(phase 2)* |
+| III · the kill | `LongRunningFunctionTool` returns a handle; `ResumabilityConfig` lets the run park on it; the ticket is in session state, in `lab.db` | delete one `# ` · ask for tickets · 💀 KILL · "Where am I in line?" | one `queue_ticket`, handed out by `join_queue` under one boot id and read back by `check_queue` under another — and one ticket at the venue |
+| IV · old news | `before_tool_callback` re-reads the world; returning a dict short-circuits the tool | delete one `# ` · ask · ask about the seats · SELL THE GOOD SEATS · SKIP · "Buy the two section A seats." · "Then section C" | fence.py's `stale_plan` refusal, no 409 from the venue in that turn, an order in another section |
 | V · the graph | `Workflow`: rules as function nodes, judgement as agent nodes; `RequestInput` parks; `rerun_on_resume` | swap `root_agent = buyer_agent` → `nightly` · "go" · 🐓 · SKIP · 🐓 | an `adk_request_input`, ≥ 2 wake-ups, one ticket, one order *(phase 3)* |
 | VI · the budget | the same interrupt aimed at a person; a stable `interrupt_id`; `ctx.resume_inputs`; `someone_is_there()` per request | delete one `# ` on `NIGHT.insert(0, agree_budget)` · answer in your words | `budget` in session state == your sentence *(phase 3)* |
 | VII · breakfast | the laptop → cloud diff, read only | read the phone | six stubs |
@@ -68,7 +68,7 @@ site/                   Next 15 static export (output:"export", trailingSlash)
   lib/chapters.ts       the seven chapters — hook · concept · steps · edit · run · reads · tiles · next · wbGuide
   components/           Cover · Rail (stubs) · Stage · NightShift · Chapter · Editor · Workbench · Console · Breakfast
 scripts/
-  walk.py               the headless learner: I and II on the real model, --restore puts every "# " back
+  walk.py               the headless learner: I–IV on the real model, --restore puts every "# " back
   preflight.py          one real model call + "where am I"
   capture.sh            shoots the page in headless Chrome (?still=1)
 lab.sh                  refuses to start unconfigured · builds the site once · keep-open loop around ONE uvicorn

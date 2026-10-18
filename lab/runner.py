@@ -141,8 +141,17 @@ async def run(message: str, *, session_id: str | None, attended: bool, source: s
         sid = out["session_id"]
         db = await session_calls(sid)                       # lab.db is the receipt; the log is a hint
         calls = [c for c in (db.get("calls") or []) if c != "adk_request_input"] or [c for c in called if c != "adk_request_input"]
+        turn_tools = [c for c in called if c != "adk_request_input"]            # this run only; `tools` is the whole session
         orders_new = [o for o in _orders() if o["id"] not in {b["id"] for b in before}]
         reply = out["said"][-1] if out["said"] else ""
+        this_turn = (db.get("invocations") or 1) - 1
+        for r in db.get("responses") or []:
+            if r.get("tool") != "purchase" or r.get("turn") != this_turn:
+                continue
+            if r.get("by") == "fence":
+                events.emit("fence_refused", reason=r.get("reason"), actual=r.get("actually_available"), believed=r.get("believed_available"), source=source)
+            elif r.get("status") == 409:
+                events.emit("venue_409", error=r.get("error"), section=r.get("section"), source=source)
         events.emit("run_replied", who="the agent", text=reply[:400], tools=calls, awaiting=out["awaiting_input"],
                     session_id=sid, source=source, orders=[_short_order(o) for o in orders_new])
         events.emit("episode_done")
@@ -150,15 +159,16 @@ async def run(message: str, *, session_id: str | None, attended: bool, source: s
         row = state.push("wakes", {
             "source": source, "attended": attended, "who": who, "session_id": sid, "message": message,
             "said": [s[:400] for s in out["said"]], "reply": reply[:400], "awaiting": out["awaiting_input"],
-            "tools": calls, "calls": len(calls), "tools_in_file": tools_in_file, "kind": kind,
+            "tools": calls, "calls": len(calls), "turn_tools": turn_tools, "tools_in_file": tools_in_file, "kind": kind,
             "orders_new": [_short_order(o) for o in orders_new], "boot_id": state.BOOT_ID,
             "elapsed": round(time.time() - t0, 1), "code": progress.code_facts(),
-            "db": {k: db.get(k) for k in ("events", "interrupts", "compactions", "state")},
+            "db": {k: db.get(k) for k in ("events", "interrupts", "compactions", "invocations", "state", "responses")},
+            "tickets": _tickets(),
             "artifacts": _artifact_files(sid), "memory_facts": progress.memory_facts(),
         })
         if attended:
             state.set_("stage", {"session_id": sid, "ts": row["ts"]})
-        return {"ok": True, "episode": ep, **out, **{k: row[k] for k in ("tools", "calls", "orders_new", "boot_id", "reply", "tools_in_file", "kind", "elapsed", "awaiting", "db")}}
+        return {"ok": True, "episode": ep, **out, **{k: row[k] for k in ("tools", "calls", "turn_tools", "orders_new", "boot_id", "reply", "tools_in_file", "kind", "elapsed", "awaiting", "db", "tickets")}}
 
 
 def _artifact_files(session_id: str) -> list[str]:
@@ -168,6 +178,14 @@ def _artifact_files(session_id: str) -> list[str]:
         return []
     return sorted({p.name for p in base.rglob("*") if session_id in str(p) and "seatmap" in p.name and p.is_file()}
                   | {p.parent.name for p in base.rglob("*") if session_id in str(p) and "seatmap" in p.parent.name and p.is_file()})[:6]
+
+
+def _tickets() -> int:
+    """How many queue tickets the venue holds right now — chapter III wants exactly one."""
+    try:
+        return len(venue_mount.state().get("queue", []))
+    except Exception:                                              # noqa: BLE001
+        return -1
 
 
 def _orders() -> list[dict]:
@@ -188,8 +206,11 @@ async def session_calls(session_id: str) -> dict:
     s = await svc.get_session(app_name=APP, user_id=USER, session_id=session_id)
     if s is None:
         return {"exists": False}
-    calls, interrupts, compactions = [], 0, 0
+    calls, interrupts, compactions, responses = [], 0, 0, []
+    invocations: list[str] = []
     for ev in s.events or []:
+        if ev.invocation_id and ev.invocation_id not in invocations:
+            invocations.append(ev.invocation_id)
         for part in (ev.content.parts if ev.content else []) or []:
             fc = getattr(part, "function_call", None)
             if fc:
@@ -197,10 +218,34 @@ async def session_calls(session_id: str) -> dict:
                     interrupts += 1
                 else:
                     calls.append(fc.name)
+            fr = getattr(part, "function_response", None)
+            if fr and fr.name in RECEIPT_TOOLS:
+                responses.append(_receipt(fr.name, fr.response, ev.invocation_id, invocations.index(ev.invocation_id) if ev.invocation_id in invocations else None))
         if ev.actions and getattr(ev.actions, "compaction", None):
             compactions += 1
     return {"exists": True, "calls": calls, "interrupts": interrupts, "compactions": compactions,
-            "events": len(s.events or []), "state": {k: v for k, v in (s.state or {}).items() if not k.startswith("temp:")}}
+            "events": len(s.events or []), "invocations": len(invocations), "responses": responses,
+            "state": {k: v for k, v in (s.state or {}).items() if not k.startswith("temp:")}}
+
+
+#: the tool responses a receipt keeps — what the venue (or fence.py) handed the model
+RECEIPT_TOOLS = ("join_queue", "check_queue", "purchase")
+
+
+def _receipt(name: str, response, invocation_id: str | None, turn: int | None) -> dict:
+    """One tool response, reduced to the fields the chapters read. purchase: who
+    answered — the venue (an order, or a 409) or fence.py (reason stale_plan /
+    price_moved, which never reached the venue)."""
+    r = response if isinstance(response, dict) else {}
+    if "result" in r and isinstance(r["result"], dict) and len(r) == 1:
+        r = r["result"]
+    out: dict[str, Any] = {"tool": name, "invocation": (invocation_id or "")[:12], "turn": turn}
+    if name in ("join_queue", "check_queue"):
+        out |= {k: r.get(k) for k in ("ticket", "position", "ready", "status", "error", "message") if k in r}
+    else:
+        out |= {k: r.get(k) for k in ("error", "status", "reason", "believed_available", "actually_available", "message", "id", "event_id", "section", "seats", "total", "duplicate") if k in r}
+        out["by"] = "fence" if r.get("reason") in ("stale_plan", "price_moved") else ("venue" if r else "?")
+    return out
 
 
 async def list_sessions() -> list[dict]:
