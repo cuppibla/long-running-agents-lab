@@ -1,0 +1,12 @@
+{
+  "_readme": "Copy to .claude/launch.json. Replace /Users/annie/Documents/long-running-agents-lab with the lab's absolute path so the entry works from any cwd (python -m uvicorn --app-dir). The port is lab.sh's default.",
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lab",
+      "runtimeExecutable": "/Users/annie/Documents/long-running-agents-lab/.venv/bin/python",
+      "runtimeArgs": ["-m", "uvicorn", "--app-dir", "/Users/annie/Documents/long-running-agents-lab", "lab.service:app", "--host", "127.0.0.1", "--port", "3490", "--log-level", "warning"],
+      "port": 3490
+    }
+  ]
+}

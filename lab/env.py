@@ -1,0 +1,83 @@
+"""Settle how the lab talks to Gemini, once, for every process.
+
+Two ways, in this order:
+
+  1. Vertex AI (the default): your Google Cloud project + the credentials you
+     already have. In Cloud Shell the project is whatever `gcloud config set
+     project` named; `.env` can also name it.
+  2. An API key, if you would rather not use a project. Put `GOOGLE_API_KEY=…`
+     in `.env`.
+
+`.env` is read OVER the shell (`override=True`), the way ADK's own loader does,
+so the file is what counts. A key wins only when Vertex was not asked for.
+"""
+from __future__ import annotations
+
+import os
+import subprocess
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+ROOT = Path(__file__).resolve().parents[1]
+ENV_FILE = ROOT / ".env"
+ADC = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
+
+#: "vertex", "key", or "" (nothing set). Read it for messages, not logic.
+MODE = ""
+
+
+def _gcloud_project() -> str:
+    for var in ("GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_QUOTA_PROJECT", "GCP_PROJECT"):
+        if os.environ.get(var):
+            return os.environ[var]
+    try:
+        out = subprocess.run(["gcloud", "config", "get-value", "project"],
+                             capture_output=True, text=True, timeout=8).stdout.strip()
+        return "" if out in ("", "(unset)") else out
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def settle() -> str:
+    """Load .env, pick a mode, export exactly the variables it needs."""
+    global MODE
+    load_dotenv(ENV_FILE, override=True)
+    if os.environ.get("GEMINI_API_KEY") and not os.environ.get("GOOGLE_API_KEY"):
+        os.environ["GOOGLE_API_KEY"] = os.environ.pop("GEMINI_API_KEY")
+    key = os.environ.get("GOOGLE_API_KEY", "").strip()
+    has_key = key not in ("", "YOUR_GOOGLE_API_KEY_HERE")
+    wants_vertex = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").upper() in ("1", "TRUE", "YES")
+
+    if has_key and not wants_vertex:
+        os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "FALSE"
+        MODE = "key"
+        return MODE
+
+    project = _gcloud_project()
+    if wants_vertex or (ADC.exists() and project):
+        os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "TRUE"
+        if project:
+            os.environ.setdefault("GOOGLE_CLOUD_PROJECT", project)
+        # gemini-2.5-flash is served from `global`, which draws on capacity across regions.
+        os.environ.setdefault("GOOGLE_CLOUD_LOCATION", "global")
+        os.environ.pop("GOOGLE_API_KEY", None)        # never send both
+        MODE = "vertex"
+        return MODE
+
+    MODE = "key" if has_key else ""
+    return MODE
+
+
+MODE = settle()
+
+
+def read_env_line(key: str) -> str:
+    """One `KEY=value` line of .env, or ''. Read from the file, not the process."""
+    if not ENV_FILE.exists():
+        return ""
+    for line in ENV_FILE.read_text().splitlines():
+        s = line.strip()
+        if s.startswith(f"{key}="):
+            return s.split("=", 1)[1].strip().strip('"').strip("'")
+    return ""
