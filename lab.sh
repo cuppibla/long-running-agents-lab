@@ -57,14 +57,18 @@ echo "  the workbench           → http://localhost:${PORT}/workbench/dev-ui/?a
 echo "  the venue's panel       → http://localhost:${PORT}/venue/panel"
 echo
 
+# Ctrl+C: stop the child, then leave the loop. The 2 s graceful timeout matters:
+# the page holds an event stream open, and without it uvicorn waits for that
+# connection forever before exiting.
 cleanup() { pkill -P $$ 2>/dev/null || true; }
-trap cleanup EXIT INT TERM
+trap 'cleanup; exit 0' INT TERM
+trap cleanup EXIT
 
 # keep open: 💀 exits the process with code 3; a second later the lab is back
 # with a new boot id, reading lab.db from disk. Any other exit is a crash and is
 # retried the same way, so a broken save never leaves the page dead.
 export LAB_PORT="$PORT"
 while true; do
-  .venv/bin/uvicorn lab.service:app --host 0.0.0.0 --port "$PORT" --log-level warning || true
+  .venv/bin/uvicorn lab.service:app --host 0.0.0.0 --port "$PORT" --log-level warning --timeout-graceful-shutdown 2 || true
   sleep 1
 done
