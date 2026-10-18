@@ -4,22 +4,25 @@ import { eventsUrl, type Ev } from "./api";
 
 /** The stage is a projection of the lab's event log. This hook keeps the
  *  log (recent history, then live) and folds the latest episode into the
- *  state the stage renders. Nothing here computes a score.
+ *  state the stage renders: is a run going, who started it, what it has
+ *  called so far. Receipts (progress.thread) carry the finished runs; the
+ *  log carries the one in flight.
  *
  *  ?still=1 — capture mode: read the log once (GET /api/log) instead of
  *  holding the SSE open, so headless Chrome can take a picture of the page. */
 
 export type Folded = {
-  connected: boolean; episode: number; kind: string;
+  connected: boolean; episode: number; kind: string;        // kind: stage · clock · seed · ""
+  running: boolean; done: boolean;
   asked: { who: string; text: string } | null;
-  replied: { text: string; tools: string[]; tools_in_file: string[] } | null;
-  cases: { i: number; of: number; prompt: string; reply: string; tools: string[]; pass: boolean }[];
-  scored: { score: number; of: number; edit: boolean; tools: string[] } | null;
-  error: string | null; done: boolean; running: boolean;
+  calledSoFar: string[];
+  replied: { text: string; tools: string[]; awaiting: boolean; session_id: string } | null;
+  clock: "idle" | "armed" | "fired";
+  error: string | null;
   log: Ev[];
 };
 
-const BIG = new Set(["say_replied", "exam_scored", "file_saved", "episode_done", "error"]);
+const BIG = new Set(["run_replied", "file_saved", "job_done", "world", "seeded", "kill", "boot", "error"]);
 
 export function useEvents(): Folded {
   const [log, setLog] = useState<Ev[]>([]);
@@ -41,7 +44,10 @@ export function useEvents(): Folded {
       es.onmessage = (m) => {
         try {
           const ev = JSON.parse(m.data) as Ev;
-          if (ev.i <= seen.current) return;
+          if (ev.i <= seen.current) {
+            // a new boot restarts the counter — a smaller `i` after a kill is a new process, not a repeat
+            if (ev.type !== "boot" && ev.i < seen.current - 50) seen.current = -1; else if (ev.type !== "boot") return;
+          }
           seen.current = ev.i;
           setLog((p) => [...p.slice(-600), ev]);
         } catch { /* keep-alive */ }
@@ -59,19 +65,22 @@ function fold(log: Ev[], connected: boolean): Folded {
   const episode = log.length ? Math.max(...log.map((e) => e.ep)) : 0;
   const ev = log.filter((e) => e.ep === episode);
   const start = ev.find((e) => e.type === "episode_started");
-  const asked = last(ev, "say_asked");
-  const replied = last(ev, "say_replied");
-  const scored = last(ev, "exam_scored");
+  const asked = last(ev, "run_asked");
+  const replied = last(ev, "run_replied");
   const err = last(ev, "error");
-  const done = ev.some((e) => e.type === "episode_done");
+  const done = ev.some((e) => e.type === "episode_done" || e.type === "job_done");
+  const kind = (start?.kind as string) || "";
+  const clockFired = ev.some((e) => e.type === "clock_fired");
+  const clockArmed = ev.some((e) => e.type === "clock_armed");
   return {
-    connected, episode, kind: (start?.kind as string) || "",
+    connected, episode, kind,
+    running: Boolean(start) && !done,
+    done,
     asked: asked ? { who: asked.who as string, text: asked.text as string } : null,
-    replied: replied ? { text: replied.text as string, tools: (replied.tools as string[]) || [], tools_in_file: (replied.tools_in_file as string[]) || [] } : null,
-    cases: ev.filter((e) => e.type === "exam_case").map((e) => ({ i: e.i as number, of: e.of as number, prompt: e.prompt as string, reply: e.reply as string, tools: (e.tools as string[]) || [], pass: Boolean(e.pass) })),
-    scored: scored ? { score: scored.score as number, of: scored.of as number, edit: Boolean(scored.edit), tools: (scored.tools as string[]) || [] } : null,
+    calledSoFar: ev.filter((e) => e.type === "tool_called").map((e) => e.name as string),
+    replied: replied ? { text: replied.text as string, tools: (replied.tools as string[]) || [], awaiting: Boolean(replied.awaiting), session_id: replied.session_id as string } : null,
+    clock: kind === "clock" && !done ? (clockFired ? "fired" : clockArmed ? "armed" : "idle") : "idle",
     error: err ? (err.message as string) : null,
-    done, running: Boolean(start) && !done,
     log,
   };
 }

@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "lab",
+      "name": "long-running-agents",
       "runtimeExecutable": "/Users/annie/Documents/long-running-agents-lab/.venv/bin/python",
       "runtimeArgs": ["-m", "uvicorn", "--app-dir", "/Users/annie/Documents/long-running-agents-lab", "lab.service:app", "--host", "127.0.0.1", "--port", "3490", "--log-level", "warning"],
       "port": 3490

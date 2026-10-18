@@ -1,53 +1,66 @@
-"""The lab — one process, one port.
+"""Long-Running Agents — one process, one port.
 
-    /                 the page (site/out, built once by lab.sh)
-    /api/health       {ok, boot_id, mode}
-    /api/progress     which chapter is lit — read from your files + what ran
-    /api/events       SSE: the event log (recent history, then live) · /api/log: the same, once
-    /api/say          POST {text, who}: one real reply from the agent, on the stage
-    /api/code         GET / POST: the in-page editor (allow-listed files, syntax-checked)
-    /api/job          POST {kind} / GET ?kind= / DELETE ?kind=: exam
-    /api/source       GET ?path=: one file of the lab, as plain text (the ↗ links)
-    /workbench        adk web, mounted here: same agent/ folder, same lab.db
+    /                     the page (site/out, built once by lab.sh)
+    /api/health           {ok, boot_id, mode, venue}
+    /api/progress         which chapter is lit — read from your files + what ran
+    /api/events           SSE: the event log (recent history, then live) · /api/log: the same, once
+    /api/say              POST {text, session_id?}: a person on the stage → the agent runs, attended
+    /api/wake             POST {message?, session_id?}: the clock's door → the same agent, unattended
+    /api/session/new      POST: a fresh stage session id (nothing is deleted)
+    /api/code             GET / POST: the in-page editor (two files, syntax-checked)
+    /api/job              POST {kind} / GET ?kind= / DELETE ?kind=: wake · seed
+    /api/venue/{action}   POST: the world buttons — reset · advance-queue · sellout · hang-once · clock
+    /api/venue/state      GET: what the venue panel polls
+    /api/kill             POST: the process ends on purpose; lab.sh brings it back (boot_id changes)
+    /api/source           GET ?path=: one file of the lab, as plain text (the ↗ links)
+    /workbench            adk web, mounted here: same agent/ folder, same lab.db, same artifacts
+    /venue                the vendored venue, mounted for the page (the agent talks to its own port)
 
-    uvicorn lab.service:app --port 3600
-
-CHANGE ME (the show): the title string. The routes are the contract the page,
-scripts/walk.py and scripts/capture.sh all drive; keep them.
+    uvicorn lab.service:app --port 3490
 """
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
+import os
 import re
 import sys
+import warnings
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+warnings.filterwarnings("ignore", message=r".*\[EXPERIMENTAL\].*")
 
-from lab import env  # noqa: E402,F401  — settles the model path first
+from lab import env  # noqa: E402,F401  — settles the model path and the venue's port first
 from fastapi import FastAPI, HTTPException, Request  # noqa: E402
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
-from lab import codefile, events, jobs, progress, say, state, workbench  # noqa: E402
+from lab import codefile, events, jobs, progress, runner, state, venue_mount, workbench  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logging.getLogger("google_adk").setLevel(logging.WARNING)
 log = logging.getLogger("lab")
 SITE = ROOT / "site" / "out"
-TITLE = "Lab Starter"
+TITLE = "Long-Running Agents"
 
 wb = workbench.app()
 
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
+    state.record_boot()
+    venue_mount.start()
+    ok = await asyncio.to_thread(venue_mount.wait_ready, 10.0)
+    log.info("boot %s · venue %s on %s · mode %s", state.BOOT_ID, "up" if ok else "NOT UP", env.VENUE_URL, env.MODE)
+    events.emit("boot", boot_id=state.BOOT_ID, venue=ok, boots=len(state.boots()))
     # Starlette does not run a mounted app's lifespan; run the workbench's so
     # its own startup and shutdown hooks fire.
     async with wb.router.lifespan_context(wb):
         yield
+    venue_mount.stop()
 
 
 app = FastAPI(title=TITLE, lifespan=lifespan)
@@ -63,12 +76,12 @@ async def _no_cache_api(request: Request, call_next):
 
 @app.get("/api/health")
 async def health() -> dict:
-    return {"ok": True, "boot_id": state.BOOT_ID, "mode": env.MODE}
+    return {"ok": True, "boot_id": state.BOOT_ID, "mode": env.MODE, "venue": env.VENUE_URL, "port": env.PORT}
 
 
 @app.get("/api/progress")
 async def get_progress() -> dict:
-    return progress.read(workbench_calls=await workbench.calls())
+    return progress.read()
 
 
 # ── the log ──────────────────────────────────────────────────────────────────
@@ -83,21 +96,85 @@ async def get_log() -> dict:
     return {"events": events.recent(), "episode": events.EPISODE}
 
 
-# ── the stage ────────────────────────────────────────────────────────────────
+# ── the two doors ────────────────────────────────────────────────────────────
 @app.post("/api/say")
 async def post_say(req: Request) -> dict:
+    """A person typed on the stage. Attended: a question can stop the run and wait for them."""
     body = await req.json()
-    if say._busy.locked():
-        raise HTTPException(409, "a reply is already in progress")
+    text = str(body.get("text", "")).strip()
+    if not text:
+        raise HTTPException(400, "say what?")
     try:
-        return await say.say(str(body.get("text", "")), str(body.get("who", "you")))
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
+        return await runner.run(text, session_id=body.get("session_id") or None, attended=True, source="stage",
+                                who=str(body.get("who") or "you"))
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@app.post("/api/wake")
+async def post_wake(req: Request) -> dict:
+    """The clock posted (monstertix/clock.py, or the venue's DROP THE PRESALE). Nobody is there."""
+    body = {}
+    with contextlib.suppress(Exception):
+        body = await req.json()
+    message = str(body.get("message") or env.WAKE_MESSAGE)
+    if body.get("kind") == "presale_drop":                     # the venue's button sends its own shape
+        message = env.WAKE_MESSAGE
+    try:
+        return await runner.run(message, session_id=body.get("session_id") or None, attended=False, source="clock",
+                                who="the clock")
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@app.post("/api/session/new")
+async def new_session() -> dict:
+    from monstertix import handlers
+    sid = handlers.new_session_id()
+    state.set_("stage", {"session_id": sid, "ts": None})
+    events.emit("session_new", session_id=sid)
+    return {"session_id": sid}
+
+
+@app.get("/api/session")
+async def get_session(id: str) -> dict:
+    """What lab.db holds for one session — the receipt behind the stage's readouts."""
+    return {"id": id, **await runner.session_calls(id)}
+
+
+# ── the world ────────────────────────────────────────────────────────────────
+@app.post("/api/venue/{action}")
+async def venue_action(action: str, req: Request) -> dict:
+    body = {}
+    with contextlib.suppress(Exception):
+        body = await req.json()
+    try:
+        out = await asyncio.to_thread(venue_mount.admin, action, body)
+    except KeyError as exc:
+        raise HTTPException(404, f"no world button {action!r}") from exc
+    events.emit("world", action=action, **{k: v for k, v in (body or {}).items() if isinstance(v, (str, int, float))})
+    progress._cache = None
+    return {"ok": True, "action": action, "result": out}
+
+
+@app.get("/api/venue/state")
+async def venue_state() -> dict:
+    return await asyncio.to_thread(venue_mount.state)
+
+
+@app.post("/api/kill")
+async def kill() -> dict:
+    """💀 the process ends on purpose. lab.sh's loop starts a new one a second
+    later with a new boot_id; what survives is the lesson (chapter III)."""
+    events.emit("kill", boot_id=state.BOOT_ID)
+    state.save()
+    asyncio.get_event_loop().call_later(0.3, os._exit, 3)
+    return {"ok": True, "boot_id": state.BOOT_ID, "note": "dying in 0.3 s · lab.sh brings it back"}
 
 
 # ── the source, read-only ────────────────────────────────────────────────────
-SOURCE_OK = ("agent/", "lab/", "scripts/", "site/lib/", "site/components/", "site/app/",
-             "README.md", "lab.sh", "pyproject.toml", ".env.example")
+SOURCE_OK = ("agent/", "lab/", "monstertix/", "venue/", "seed/", "memory/", "scripts/", "site/lib/", "site/components/",
+             "site/app/", "README.md", "lab.sh", "pyproject.toml", ".env.example", "runs/boots.json")
 
 
 @app.get("/api/source")
@@ -107,8 +184,8 @@ async def get_source(path: str):
     clean = path.lstrip("/")
     target = (ROOT / clean).resolve()
     if ".." in clean or not str(target).startswith(str(ROOT)) or not clean.startswith(SOURCE_OK) \
-            or clean.endswith((".db", ".env", ".pyc")) or "/.adk/" in clean or "/__pycache__/" in clean \
-            or "node_modules" in clean:
+            or clean.endswith((".db", ".env", ".pyc", ".jpg", ".png", ".mp3")) or "/.adk/" in clean or "/__pycache__/" in clean \
+            or "node_modules" in clean or clean == ".env":
         raise HTTPException(404, "not a source file of this lab")
     if not target.is_file():
         raise HTTPException(404, f"{clean} does not exist")
@@ -132,8 +209,9 @@ async def write_code(req: Request) -> dict:
     except KeyError as exc:
         raise HTTPException(404, str(exc)) from exc
     if out.get("validation", {}).get("valid"):
-        await workbench.forget()          # adk web re-reads the file on its next run
-        events.emit("file_saved", path=body["path"])
+        await workbench.forget()          # adk web re-reads the files on its next run
+        progress._cache = None
+        events.emit("file_saved", path=body["path"], code=progress.code_facts())
     return out
 
 
@@ -173,7 +251,7 @@ def _origin(request: Request) -> str:
     if seen:
         return seen.group(0)
     proto = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
-    host = request.headers.get("x-forwarded-host", request.headers.get("host", "localhost:3600"))
+    host = request.headers.get("x-forwarded-host", request.headers.get("host", f"localhost:{env.PORT}"))
     return f"{proto}://{host.split(',')[0].strip()}"
 
 
@@ -188,6 +266,7 @@ async def runtime_config(request: Request):
 
 
 app.mount(workbench.URL_PREFIX, wb)
+app.mount("/venue", venue_mount.app(), name="venue")
 
 if (SITE / "index.html").exists():
     app.mount("/", StaticFiles(directory=str(SITE), html=True), name="site")

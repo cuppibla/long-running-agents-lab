@@ -1,4 +1,4 @@
-"""Is this machine ready, and which chapters are lit?
+"""Is this machine ready, and which stubs are torn?
 
 Run it now, and again any time you want the answer to "where am I?" — every
 line is read from your files and the lab's receipts, never a checklist.
@@ -26,11 +26,9 @@ def model_check() -> str:
     from google import genai
     from google.genai import types
 
-    from agent import agent
-
     client = genai.Client()
     r = client.models.generate_content(
-        model=agent.MODEL, contents="Reply with exactly: the lab is open.",
+        model=os.environ.get("ADK_MODEL", "gemini-2.5-flash"), contents="Reply with exactly: the presale is open.",
         config=types.GenerateContentConfig(
             thinking_config=types.ThinkingConfig(thinking_budget=0), temperature=0.0))
     return (r.text or "").strip()
@@ -49,11 +47,15 @@ def why(mode: str) -> str:
 def chapters(p: dict) -> list[str]:
     code, lit = p["code"], p["lit"]
     rows = [
-        (1, "I", "the first word", "a reply is not a result", "read only · one reply in the workbench"),
-        (2, "II", "the one line", "the tool is in" if code.get("edit") else "no tool yet", "delete one “# ” in agent/agent.py · run the exam twice"),
-        (3, "III", "the check", "", "both"),
+        (1, "I", "the clock", "", "say the plan · 🐓 wake it at 3am"),
+        (2, "II", "where a fact lives", "recall is in" if code.get("recall") else "no recall yet", "delete one “# ” in agent/concert/agent.py · 🐓 again"),
+        (3, "III", "the kill", "queue tools in" if code.get("queue") else "no queue tool yet", "phase 2"),
+        (4, "IV", "old news", "fence armed" if code.get("fence") else "no fence yet", "phase 2"),
+        (5, "V", "the graph", "root is the graph" if code.get("graph") else "root is the agent", "phase 3"),
+        (6, "VI", "the budget", "agree_budget first" if code.get("budget") else "default budget", "phase 3"),
+        (7, "VII", "breakfast", "", "six stubs"),
     ]
-    return [f"  {r:<4}{TICK if lit.get(str(n)) else BOX} {name:<16}{DIM}· {how:<28}{note}{OFF}"
+    return [f"  {r:<4}{TICK if lit.get(str(n)) else BOX} {name:<20}{DIM}· {how:<22}{note}{OFF}"
             for n, r, name, how, note in rows]
 
 
@@ -70,8 +72,7 @@ def main() -> int:
 
     try:
         heard = model_check()
-        from agent import agent
-        print(f"  the model answers {DIM}· {agent.MODEL} · it said: {heard[:48]}{OFF}")
+        print(f"  the model answers {DIM}· {os.environ.get('ADK_MODEL')} · it said: {heard[:48]}{OFF}")
     except Exception as exc:                                   # noqa: BLE001
         print(f"  ✗ the model did not answer: {type(exc).__name__}: {exc}"[:240])
         print("    " + why(mode))
@@ -79,19 +80,14 @@ def main() -> int:
 
     built = (ROOT / "site" / "out" / "index.html").exists()
     print(f"  the page {DIM}· " + ("built" if built else "not built yet — bash lab.sh builds it once") + OFF)
+    print(f"  the venue {DIM}· runs inside the lab's process on 127.0.0.1:{env.VENUE_PORT} (chosen per boot){OFF}")
 
-    import asyncio
-
-    from lab import progress, workbench
-    try:
-        calls = asyncio.run(workbench.calls())
-    except Exception:                                          # noqa: BLE001 — no lab.db yet
-        calls = 0
-    p = progress.read(workbench_calls=calls)
-    print("\n  the chapters:\n")
+    from lab import progress
+    p = progress.read()
+    print("\n  the stubs:\n")
     for line in chapters(p):
         print(line)
-    print(f"\n  {DIM}a lamp lights when something real proves it — a session that exists, an exam that ran —"
+    print(f"\n  {DIM}a stub tears when something real proves it — a session the clock made, an order at the venue —"
           f" not when the code reads right.{OFF}\n")
     return 0
 

@@ -1,18 +1,24 @@
 # Long-Running Agents
 
-The starter kit for an **interactive one-page lab**: one FastAPI/uvicorn process
-on one port serves a Next.js page, `/api/*`, and `adk web` in a drawer. Three
-chapters, one agent, one edit. Distilled from
-[Table for N](https://github.com/cuppibla/table-for-n) (the newest) and Agent
-Valley's Night Market; the code here is theirs, renamed and trimmed.
+**MonsterTix · ADK 2 on Google Cloud.** An agent that waits in line, survives
+being killed, and buys at 3am inside limits you set — six chapters on one page,
+with a real agent behind it. This is the interactive-lab form of the
+[MonsterTix workshop](https://github.com/gca-americas/monstertix) (Christina
+Lin's two-hour long-running-agents codelab): the venue, the handler, the clock
+and the agent package are vendored verbatim; every chapter's hands-on step is
+one gesture on the page, lit by a receipt the process produced.
 
-| chapter | the concept | what you do on the page | the receipt that lights it |
+| chapter | the concept | what you do on the page | the receipt that tears the stub |
 |---|---|---|---|
-| I · the first word | an LlmAgent is a model + an instruction; a reply is not a result | say the line on the stage, then in the workbench | a session in `lab.db` made from the workbench |
-| II · the one line | a tool is a Python function; `tools=[door_code]` is the wiring | delete one `# ` in `agent/agent.py` · run the exam before and after | an exam that ran with the tool scored higher than one that ran without it |
-| III · the check | lamps come from receipts, never from a checklist | press the check | both |
+| I · the clock | `instruction=` is read only when a message arrives; a **trigger** (an endpoint + a `Runner`) and a **triggerer** (a clock) | say the plan, hands down, press 🐓 WAKE IT AT 3AM | a `wake-…` session the clock created, with ≥ 1 tool call |
+| II · where a fact lives | `temp:` · session state · `user:` · a memory file; `recall()` through `BaseMemoryService`; compaction | delete one `# ` on `recall, remember,` · 🐓 again | a wake whose events include `recall` and whose order is the Saturday show |
+| III · the kill | `LongRunningFunctionTool` returns a handle; `ResumabilityConfig` parks the run in the store | delete one `# ` · ask for tickets · 💀 KILL · ask again | the same queue ticket under two boot ids, one ticket at the venue *(phase 2)* |
+| IV · old news | `before_tool_callback` re-reads the world; returning a dict short-circuits the tool | delete one `# ` · SELL THE GOOD SEATS · SKIP · "buy section A" | a `stale_plan` refusal before the venue is called *(phase 2)* |
+| V · the graph | `Workflow`: rules as function nodes, judgement as agent nodes; `RequestInput` parks; `rerun_on_resume` | swap `root_agent = buyer_agent` → `nightly` · "go" · 🐓 · SKIP · 🐓 | an `adk_request_input`, ≥ 2 wake-ups, one ticket, one order *(phase 3)* |
+| VI · the budget | the same interrupt aimed at a person; a stable `interrupt_id`; `ctx.resume_inputs`; `someone_is_there()` per request | delete one `# ` on `NIGHT.insert(0, agree_budget)` · answer in your words | `budget` in session state == your sentence *(phase 3)* |
+| VII · breakfast | the laptop → cloud diff, read only | read the phone | six stubs |
 
-*A lamp lights from a receipt, never from a checklist.*
+*A stub tears from a receipt, never from a checklist.*
 
 ## Run it
 
@@ -26,124 +32,77 @@ uv run python scripts/preflight.py     # one real model call + "where am I"
 bash lab.sh                            # builds site/ once, then ONE uvicorn on $PORT (default 3490)
 ```
 
-Open **http://localhost:3490**. `lab.sh` recreates `.venv` (via `uv sync`) and
-`site/node_modules` + `site/out` (via `npm ci` + `npm run build`) when they are
-missing or stale; none of those are checked in.
+Open **http://localhost:3490**. `lab.sh` keeps the process open: 💀 KILL THE
+PROCESS (chapter III) really ends it, and the loop starts a new one a second
+later with a new boot id. To stop the lab, stop `lab.sh`.
 
 In Cloud Shell: `./setup_project.sh` (a billing-linked project) then
-`./setup_codelab.sh` (API on, `.venv`, the page built, `.env`, preflight), then
-`bash lab.sh` and Web Preview on the port.
+`./setup_codelab.sh`, then `bash lab.sh` and Web Preview on the port.
 
-Nothing restarts. A save in the page lands on your next reply and your next
-exam; the workbench re-reads the file on its next run (`POST /api/code` evicts
-its cached agent).
+Nothing restarts on a save. An edit in the page lands on the next run — the
+stage's, the clock's and the workbench's all re-read the file.
 
 ## What is where
 
 ```
-agent/                  the ADK agent folder adk web lists: __init__.py · agent.py (root_agent) · instruction.txt
-lab/                    the service package
-  service.py            the routes (below), the workbench mount, the static mount LAST
+agent/concert/          the agent package, vendored from the source lab (header comment on each file)
+  agent.py              RESTRUCTURED: four one-line toggles (II recall · III queue · IV fence · V root_agent)
+  nightly.py            RESTRUCTURED: one one-line toggle (VI NIGHT.insert(0, agree_budget)); every node verbatim
+  tools.py · memory.py · fence.py · budget.py · panel.py · venue.py · config.py   verbatim
+monstertix/             handlers.py (wake · pending_interrupt · wipe) and clock.py (the triggerer), verbatim
+venue/                  app.py, the fake ticket seller, verbatim — runs INSIDE the lab's process
+seed/                   the two-days-ago session and the starting memory file, verbatim
+memory/userx.md         what recall() reads; remember() appends; the seed job rewrites it
+lab/                    the service package (this lab's own code)
+  service.py            the routes (below), the workbench mount, the venue mount, the static mount LAST
+  runner.py             the trigger: /api/say (attended) and /api/wake (unattended) through handlers.wake; receipts
+  venue_mount.py        the venue on its own loopback port in a thread (sync tools would block one loop)
+  jobs.py               subprocess jobs: wake (clock.py --in 10) · seed; `[clock]` lines → events
+  progress.py           which stub is torn: a code fact paired with a receipt, per chapter
+  codefile.py           the editor's back end: two files, symbol-scoped, syntax-checked writes
+  workbench.py          adk web via get_fast_api_app(url_prefix="/workbench") + forget()
   events.py             the append-only event log · SSE (/api/events) + once (/api/log)
-  jobs.py               subprocess jobs; a line printed as `@@event {json}` lands in the log
-  progress.py           which chapter is lit: a code fact paired with a receipt, per chapter
-  codefile.py           the in-page editor's back end: allow-listed files, syntax-checked writes
-  workbench.py          adk web via get_fast_api_app(url_prefix="/workbench", reload_agents=False) + forget()
-  say.py                POST /api/say: one real reply through ADK's Runner, sessions in the shared lab.db
-  state.py              receipts (runs/state.json) + BOOT_ID
-  env.py                Vertex-vs-key, settled once, .env over the shell
+  state.py              receipts (runs/state.json) + boots (runs/boots.json) + BOOT_ID
+  env.py                Vertex-vs-key, the venue's port, the clock's target — settled once
 site/                   Next 15 static export (output:"export", trailingSlash)
-  lib/chapters.ts       the three chapters — the data model (hook · concept · steps · edit · run · sources · expect · next · wbGuide)
-  lib/api.ts            the /api client · lib/useEvents.ts  the SSE fold (+ ?still=1)
-  components/           Cover · Rail (lamps) · Stage · Chapter · Editor · Console · Workbench (drawer) · Check (receipt)
-  app/page.tsx          the cover · app/lab/page.tsx  the lab (?ch= &still=1 &console=1 &check=1)
-  app/globals.css       the token block "THE SHOW'S PALETTE — change these"
+  lib/chapters.ts       the seven chapters — hook · concept · steps · edit · run · reads · tiles · next · wbGuide
+  components/           Cover · Rail (stubs) · Stage · NightShift · Chapter · Editor · Workbench · Console · Breakfast
 scripts/
-  exam.py               the job: the agent on 3 fixed prompts, @@event lines, one JSON receipt
-  walk.py               the headless learner: drives /api/* as the page does, asserts lit chapters, --restore
-  capture.sh            shoots every chapter with ?still=1 in headless Chrome (--timeout, not shell timeout)
-  preflight.py          one real model call + "where am I" from files and receipts
-art/gen.py              the Nano Banana pattern: ONE chat seeded with refs + STYLE + a PIECES dict; ships no images
-lab.sh                  refuses to start unconfigured · builds the site once when changed · ONE uvicorn
-setup_project.sh        Cloud Shell: a billing-linked project (LAB_SLUG / LAB_NAME / REUSE_FLAG block at the top)
-setup_codelab.sh        Cloud Shell: API on, .venv, the page, .env, preflight
-launch.example.json     the preview-runner entry (python -m uvicorn --app-dir …)
+  walk.py               the headless learner: I and II on the real model, --restore puts every "# " back
+  preflight.py          one real model call + "where am I"
+  capture.sh            shoots the page in headless Chrome (?still=1)
+lab.sh                  refuses to start unconfigured · builds the site once · keep-open loop around ONE uvicorn
 ```
 
-### The routes (the contract the page and the scripts drive)
+### The routes
 
 ```
-GET  /api/health                 {ok, boot_id, mode}
-GET  /api/progress               {code:{edit,…}, lit:{"1","2","3"}, boot_id, workbench_calls, exams, last_say, …}
+GET  /api/health                 {ok, boot_id, mode, venue, port}
+GET  /api/progress               {code:{recall,queue,fence,graph,budget}, lit:{"1".."7"}, boot_id, boots, wakes, venue, …}
 GET  /api/events  · GET /api/log SSE, and the same history once (?still=1 uses it)
-GET  /api/code?path=&symbol=     one allow-listed file (or one top-level symbol)
-POST /api/code {path,content}    syntax-checked write; evicts the workbench's cached agent
-POST /api/job {kind} · GET ?kind= · DELETE ?kind=     one job per kind; `exam` here
+POST /api/say {text, session_id}  a person typed: handlers.wake(…) with budget.mark_attended()
+POST /api/wake {message?}        the clock's door: the same handler, unattended; a new wake-… session
+POST /api/session/new            a fresh stage session id
+GET  /api/session?id=            what lab.db holds for one session (calls, state, compactions)
+GET/POST /api/code               the editor (agent/concert/agent.py · nightly.py); POST evicts the workbench's agent
+POST /api/job {kind} · GET ?kind= · DELETE ?kind=     wake · seed
+POST /api/venue/{action}         reset · advance-queue · sellout · hang-once · clock   (the world buttons)
+GET  /api/venue/state            what the venue panel polls
+POST /api/kill                   exit 3; lab.sh restarts; boot_id changes
 GET  /api/source?path=           plain-text read; rejects .., .env, .db, .pyc, /.adk/, __pycache__
-POST /api/say {text, who}        one reply from root_agent; emits say_asked / say_replied
-/workbench                       adk web; /workbench/dev-ui/assets/config/runtime-config.json is served
-                                 with an ABSOLUTE backendUrl (otherwise the dev UI builds ws://workbench/run_live)
+/workbench                       adk web (runtime-config.json served with an ABSOLUTE backendUrl)
+/venue                           the venue, mounted for the page and its panel
 /                                site/out, mounted last
 ```
 
-## The three CHANGE ME zones
-
-**1 · the show** — `site/lib/chapters.ts` (`SHOW`, `ART`, `LINE`, `CLOSING`),
-the token block at the top of `site/app/globals.css` (+ the font link in
-`app/layout.tsx`), `TITLE` in `lab/service.py`, `LAB_NAME` in `lab.sh` and the
-setup scripts, `STYLE` / `PIECES` in `art/gen.py`, `site/public/art/README.md`.
-The page falls back to CSS gradients while the art is missing.
-
-**2 · the chapters** — `site/lib/chapters.ts` (one entry per chapter),
-`lab/progress.py` (one `lit` line per chapter: a code fact paired with a
-receipt), `lab/codefile.py` (`FILES`, what the editor may open),
-`lab/jobs.py` (one builder + finisher per job kind), `scripts/exam.py`
-(the job itself), `scripts/walk.py` (one function per chapter + `restore`),
-`scripts/capture.sh` (one shot per state), `scripts/preflight.py` (`chapters`).
-
-**3 · the agent** — `agent/agent.py` (name, model, tools, the marker line),
-`agent/instruction.txt`, `APP` in `lab/workbench.py` and `lab/say.py` if you
-rename the folder.
-
-## The UX laws the components honour
-
-- Every edit shows a **was / now** box and the file it changed; a button that
-  changes a file shows the file (the Editor is a live view of the disk).
-- A state-aware **NEXT →** cue per chapter, computed from `/api/progress`.
-- Instructions live on the tool they are about, **once**: the workbench drawer
-  carries the numbered steps + a YOU WILL SEE line; the chapter panel only points there.
-- Lamps light from **receipts** (a session that exists, an exam that ran),
-  never from a checklist — and stay earned: the receipt records the state of
-  the file when it ran, so changing the file back does not unlight it.
-- A **SOURCE** row per chapter linking to `/api/source`; `?ch=N` deep links;
-  `?still=1` reads the log once so headless Chrome can shoot the page.
-- The chapter panel stays sparse; explicit steps sit where the gesture happens.
-
-## Verify a derived lab
+## Verify
 
 ```bash
-uv run python scripts/walk.py --base http://127.0.0.1:3490            # lights I, II, III on the real model
-uv run python scripts/walk.py --base http://127.0.0.1:3490 --restore  # …and puts the "# " back
-LAB_URL=http://127.0.0.1:3490 bash scripts/capture.sh runs/shots      # cover + every chapter, as PNGs (LAB_URL = where the lab runs)
+uv run python scripts/walk.py --base http://127.0.0.1:3490            # I and II on the real model
+uv run python scripts/walk.py --base http://127.0.0.1:3490 --restore  # puts every "# " back, resets the venue, re-seeds memory; git status clean
+LAB_URL=http://127.0.0.1:3490 bash scripts/capture.sh runs/shots      # the shots
 ```
 
-`exam.py` exits 0 when every prompt got a reply; the score is data (in the
-receipt, the `exam_scored` event and the last log line). A 0 / 3 is a result,
-not an error — chapter II needs it.
-
-## What was left out, and where to find it
-
-Three chapters do not need everything Table for N has. When a lab does, copy from
-`~/Documents/table-for-n`:
-
-- more job kinds (`adk eval`, `adk optimize`, a loop, deploy/traffic/pipe/harvest) → `kitchen/jobs.py`
-- the judge switch and per-party verdict parsing → `kitchen/service.py`, `kitchen/jobs.py::_parties`
-- GEPA output parsing (`Optimized root agent instructions` block) → `kitchen/jobs.py::_finish_optimize`
-- an instruction library installed by content, not by click → `kitchen/instruction.py`
-- custom metrics registered into the dev UI's eval dialog → `kitchen/metrics_registry.py`
-- `.env` lines edited from the page → `kitchen/env.py::write_env_line`, `/api/env`
-- the floor-plan diagram that animates while a job runs → `site/components/FloorPlan.tsx`
-- the symbol-scoped editor route as a reusable router → `~/Documents/agent-valley/shared/editor.py`
-
-`uv.lock` is checked in so `uv sync` reproduces the exact set; regenerate it
-when you change `pyproject.toml`.
+The source lab's structural tests pass unchanged on the pinned ADK (2.9.2):
+`38 passed, 10 skipped`. Credits: the venue, the handler, the clock, the seed
+and the agent package are Christina Lin's, from the MonsterTix workshop.

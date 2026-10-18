@@ -3,12 +3,12 @@ import "./globals.css";
 
 // Three faces, from Google Fonts at runtime — a stylesheet link rather than
 // next/font so the static export builds anywhere, Cloud Shell included.
-// CHANGE ME (the show): the families here and --font-* in globals.css together.
-const FONTS = "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap";
+// Playfair Display (display) · Nunito (body) · JetBrains Mono (labels).
+const FONTS = "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Nunito:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap";
 
 export const metadata: Metadata = {
-  title: "Lab Starter",
-  description: "An interactive one-page lab on ADK: three chapters, one agent, one edit.",
+  title: "Long-Running Agents",
+  description: "MonsterTix · ADK 2 on Google Cloud. An agent that waits in line, survives being killed, and buys at 3am inside limits you set — six chapters, one page, a real agent behind it.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

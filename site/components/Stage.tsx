@@ -1,61 +1,104 @@
 "use client";
-import { useState } from "react";
-import type { Progress } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { getJob, startJob, type Job, type Progress, type Wake } from "@/lib/api";
 import type { Folded } from "@/lib/useEvents";
-import { ART, LINE, SHOW } from "@/lib/chapters";
-import Console from "./Console";
+import { ART, CHAPTERS, LINE, PLAN } from "@/lib/chapters";
 
-/** The stage: the agent's portrait, one line to say, the reply, and one
- *  number. The reply is a projection of the event log — nothing here
- *  computes a score. The portrait is a layered CSS background — url() over
- *  the gradient — so missing art shows the gradient, never a broken icon. */
-export default function Stage({ chapter, p, f, view, onSay, busy }: {
-  chapter: number; p: Progress | null; f: Folded; view: "show" | "console"; onSay: (text: string) => void; busy: boolean;
+/** The stage: ONE big character per chapter with a name plate, four readouts,
+ *  the talk box (the MonsterTix front door — it posts to /api/say, and if the
+ *  run is parked on a question your words are the answer), the world buttons
+ *  (the venue panel's, in-process) and the two doors of this lab: 🐓 wake it at
+ *  3am (clock.py as a job → /api/wake, nobody there) and 💀 kill the process.
+ *  Everything shown is a projection of receipts and the event log. */
+
+const Av = ({ who }: { who: "rook" | "sleeper" | "clock" | "boxoffice" | "sam" }) => (
+  <span className={`av av-${who}`} style={{ backgroundImage: `url(${ART.av[who]})` }} aria-hidden />
+);
+
+export default function Stage({ chapter, p, f, name, busy, onSay, onWorld, onKill, onChanged }: {
+  chapter: number; p: Progress | null; f: Folded; name: string; busy: boolean;
+  onSay: (text: string) => void; onWorld: (action: string, body?: Record<string, unknown>) => Promise<void>; onKill: () => void; onChanged: () => void;
 }) {
-  const [text, setText] = useState(LINE);
-  const exams = p?.exams || [];
-  const b = exams.filter((e) => !e.edit).slice(-1)[0];
-  const a = exams.filter((e) => e.edit).slice(-1)[0];
-  const replied = f.replied || (p?.last_say ? { text: p.last_say.reply, tools: p.last_say.tools, tools_in_file: p.last_say.tools_in_file } : null);
-  const asked = f.asked || (p?.last_say ? { who: p.last_say.who, text: p.last_say.text } : null);
-  const num: [string, string, string] =
-    chapter === 1 ? ["workbench", p?.workbench_calls ? `${p.workbench_calls} ${p.workbench_calls === 1 ? "reply" : "replies"}` : "none yet", p?.workbench_calls ? "good" : ""]
-    : chapter === 2 ? ["exam", `${b ? `${b.score}/${b.of}` : "–"} → ${a ? `${a.score}/${a.of}` : "–"}`, a && b && a.score > b.score ? "good" : b ? "bad" : ""]
-    : [SHOW.lampWord, `${["1", "2"].filter((k) => p?.lit?.[k]).length} / 2`, p?.lit?.["3"] ? "good" : ""];
-  const examLine = f.kind === "exam"
-    ? (f.scored ? `exam · ${f.scored.score} / ${f.scored.of} · tool ${f.scored.edit ? "in" : "not in"}` : `the exam is running · ${f.cases.length} / 3…`)
-    : null;
+  const c = CHAPTERS[chapter - 1];
+  const after = chapter === 2 && Boolean(p?.lit?.["2"]);
+  const img = after && c.star.afterImg ? c.star.afterImg : c.star.img;
+  const role = after && c.star.afterRole ? c.star.afterRole : c.star.role;
+  const defaultLine = c.steps.find((s) => s.say)?.say || LINE;
+  const [text, setText] = useState(defaultLine);
+  const lastDefault = useRef(defaultLine);
+  useEffect(() => { if (text === lastDefault.current || !text) setText(defaultLine); lastDefault.current = defaultLine; }, [defaultLine]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [wake, setWake] = useState<Job | null>(null);
+  const wakePrev = useRef("idle");
+  useEffect(() => {
+    const poll = async () => {
+      try { const j = await getJob("wake"); setWake(j); if (wakePrev.current === "running" && j.state !== "running") onChanged(); wakePrev.current = j.state; } catch { /* away */ }
+    };
+    poll(); const id = setInterval(poll, wake?.state === "running" ? 1200 : 5000); return () => clearInterval(id);
+  }, [wake?.state, onChanged]);
+  const wakeRunning = wake?.state === "running";
+  const fire = async () => { try { await startJob("wake"); } catch (e) { alert((e as Error).message); } try { setWake(await getJob("wake")); } catch { /* away */ } };
+
+  const thread: Wake[] = (p?.thread || []).slice(-4);
+  const reads = c.reads(p);
+  const clockState = wakeRunning ? (f.clock === "fired" ? "fired · running" : `armed · fires in ${Math.max(0, 10 - Math.round(wake?.elapsed || 0))} s`) : (p?.clock_runs ? `fired · ${p.clock_runs}×` : "idle");
+  const sixty = (p?.venue?.clock || 1) >= 60;
 
   return (
-    <div className="card stage-card">
-      <div className="top">
-        <span className="k">THE STAGE</span>
-        <span className={"feedchip " + (f.connected ? "live" : "off")}>{f.connected ? `● LIVE · ${p?.mode === "vertex" ? "Vertex AI" : "real model"}` : "○ the lab is away"}</span>
+    <div className="card stage">
+      <div className="scene">
+        {/* a plain <img> with a gradient behind it; a missing file shows the gradient */}
+        <img className="star" src={img} alt="" />
+        <div className="starcap"><b>{c.star.name}</b><span>{role}</span></div>
+        <div className={"chip sleeper" + (after ? " awake" : "")}><Av who="sleeper" /><span><b>{name || "you"}</b> · {after ? "awake" : "asleep"}</span></div>
+        <div className={"chip clockchip" + (wakeRunning ? " firing" : "")}><Av who="clock" /><span><b>the clock</b> · {clockState}</span></div>
       </div>
-      {view === "console" ? <Console f={f} /> : (
-        <>
-          <div className="scene">
-            <div className={"portrait" + (busy || (f.running && f.kind === "say") ? " busy" : "")} style={{ backgroundImage: `url(${ART.agent}), var(--art-agent)` }} role="img" aria-label={SHOW.agent} />
-            <div className="bubble">
-              <div className="who">{SHOW.agent.toUpperCase()}{replied?.tools_in_file?.length ? ` · tools: ${replied.tools_in_file.join(", ")}` : " · no tools"}</div>
-              <div>{busy ? "…" : replied ? `“${replied.text}”` : f.error ? <span style={{ color: "var(--tomato)" }}>{f.error}</span> : "…"}</div>
-              {replied && replied.tools.length > 0 && <div className="called">called <b>{replied.tools.join(", ")}</b></div>}
-              {asked && <div className="askline">you said: “{asked.text}”</div>}
-            </div>
+
+      <div className="reads">
+        {reads.map((r, i) => <div key={i} className={"read " + (r.cls || (i === 0 ? "hi" : ""))}><div className="k">{r.k}</div><div className="v">{r.v}</div><div className="sub">{r.s || " "}</div></div>)}
+      </div>
+
+      <div className="talk">
+        {thread.length === 0 && !f.running && (
+          <div className="bubble"><Av who="rook" /><div><div className="who">the agent</div><div className="txt" style={{ color: "var(--sub)" }}>Nobody has spoken. Say the plan, or press 🐓 and say nothing.</div></div></div>
+        )}
+        {thread.map((w) => (
+          <div key={w.ts + w.session_id} className="turn">
+            {w.source === "clock"
+              ? <div className="bubble"><Av who="clock" /><div><div className="who">the clock · 3:00 · {w.session_id}</div><div className="txt">{w.message}</div></div></div>
+              : <div className="bubble you"><Av who="sleeper" /><div><div className="who">{w.who || "you"}</div><div className="txt">{w.message}</div></div></div>}
+            <div className="bubble"><Av who="rook" /><div>
+              <div className="who">the agent{w.tools.length ? ` · called ${w.tools.join(" · ")}` : " · no tool call"}{w.orders_new.length ? ` · bought ${w.orders_new.map((o) => `${o.seats}× ${o.section} ${(o.weekday || "").slice(0, 3)}`).join(", ")}` : ""}</div>
+              <div className={"txt" + (w.awaiting ? " ask" : "")}>{w.reply || (w.awaiting ? "(the run stopped on a question)" : "(no text)")}</div>
+            </div></div>
           </div>
-          {examLine && <div className="examline">{examLine}</div>}
-          {f.kind === "exam" && f.cases.length > 0 && (
-            <div className="cases">{f.cases.map((c) => (
-              <div key={c.i} className={"case " + (c.pass ? "p" : "f")} title={c.reply}>
-                <span>{c.pass ? "✓" : "✗"} {c.i}</span><span className="pr">{c.prompt}</span>{c.tools.length > 0 && <i>called {c.tools.join(", ")}</i>}
-              </div>))}</div>
-          )}
-        </>
-      )}
-      <div className="controls">
-        <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !busy) onSay(text); }} placeholder="say something" aria-label="say" />
-        <button className="btn hot" onClick={() => onSay(text)} disabled={busy || f.running}>{busy ? "…" : "💬 say it"}</button>
-        <span className={"num " + num[2]}>{num[0]} <b>{num[1]}</b></span>
+        ))}
+        {f.running && (f.kind === "stage" || f.kind === "clock") && (
+          <div className="bubble"><Av who="rook" /><div><div className="who">the agent · running{f.calledSoFar.length ? ` · ${f.calledSoFar.join(" · ")}` : ""}</div><div className="txt" style={{ color: "var(--sub)" }}>…</div></div></div>
+        )}
+        {f.error && <div className="bubble"><Av who="rook" /><div><div className="who">error</div><div className="txt" style={{ color: "var(--coral-ink)" }}>{f.error}</div></div></div>}
+        <div className="input">
+          <input className="box" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !busy && text.trim()) onSay(text); }} placeholder="talk to it…" aria-label="talk to the agent" />
+          <button className="btn night on" disabled={busy || f.running} onClick={() => text.trim() && onSay(text)}>{busy ? "…" : "send"}</button>
+        </div>
+        <div className="quick">
+          <button className="copy" onClick={() => setText(PLAN)}>the plan</button>
+          <button className="copy" onClick={() => setText(LINE)}>the 3am sentence</button>
+        </div>
+      </div>
+
+      <div className="world">
+        <span className="k">the world</span>
+        <button className="btn night" onClick={() => onWorld("reset")} title="the venue: every ticket, order and feed line gone; the tour re-seeded">reset</button>
+        <button className="btn night" onClick={() => onWorld("advance-queue")} title="every waiting ticket straight to the front">skip the wait</button>
+        <button className="btn night" onClick={() => onWorld("sellout", { section: "A" })} title="section A sold out for both Amsterdam shows — the seat map the agent holds becomes a lie">sell the good seats</button>
+        <button className="btn night" onClick={() => onWorld("hang-once")} title="the next purchase commits, then fails its response — the platform retries">break the next purchase</button>
+        <button className={"btn night" + (sixty ? " on" : "")} onClick={() => onWorld("clock", { multiplier: sixty ? 1 : 60 })} title="how fast the queue drains: 40 minutes at 1×, 40 seconds at 60×">{sixty ? "60× → 1×" : "1× → 60×"}</button>
+      </div>
+      <div className="special">
+        <button className={"btn night" + (wakeRunning ? " on" : "")} id="wakebtn" disabled={wakeRunning || f.running} onClick={fire} title="monstertix/clock.py --in 10 → POST /api/wake · nobody is at the keyboard">
+          {wakeRunning ? (f.clock === "fired" ? "🐓 fired · the agent is running" : `🐓 armed · ${Math.max(0, 10 - Math.round(wake?.elapsed || 0))} s`) : p?.clock_runs ? "🐓 wake it again" : "🐓 wake it at 3am"}
+        </button>
+        <button className="btn night kill" onClick={onKill} disabled={f.running || wakeRunning} title="the process really dies; lab.sh brings it back with a new boot id">💀 kill the process{p?.boots && p.boots > 1 ? ` · boot ${p.boots}` : ""}</button>
       </div>
     </div>
   );

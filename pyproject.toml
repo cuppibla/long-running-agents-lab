@@ -1,17 +1,27 @@
 [project]
 name = "long-running-agents-lab"
 version = "0.1.0"
-description = "CHANGE ME — one line about the show. An interactive one-page lab on ADK: three chapters, one agent, one edit."
+description = "Long-Running Agents — the MonsterTix workshop as one interactive page: an agent that waits in line, survives being killed, and buys at 3am inside limits you set. ADK 2 on Google Cloud."
 requires-python = ">=3.11"
 dependencies = [
-    "google-adk==2.9.2",
+    # [db] pulls in sqlalchemy, which DatabaseSessionService needs: the stage,
+    # the workbench and the seed all share one sqlite+aiosqlite:///lab.db.
+    "google-adk[db]==2.9.2",
+    # ADK drives SQLAlchemy through its asyncio extension, so sqlite needs the
+    # ASYNC driver and the greenlet bridge it runs sync DBAPI calls on.
+    "aiosqlite>=0.20",
+    "greenlet>=3.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
     "python-dotenv>=1.0",
 ]
 
+[dependency-groups]
+dev = ["pytest>=8"]
+
 [tool.setuptools]
-packages = ["agent", "lab"]
+packages = ["lab"]
 
 [build-system]
 requires = ["setuptools>=68"]

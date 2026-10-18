@@ -1,9 +1,11 @@
 """The in-page editor's back end: read and write ONE file (or one top-level
 symbol of a Python file) from a short allow-list. Python is syntax-checked
-and JSON is parsed before anything is written; the page never holds a copy
-of your code — it shows the file on disk.
+before anything is written; the page never holds a copy of your code — it shows
+the file on disk.
 
-CHANGE ME (the chapters): FILES lists every file the editor may open.
+Two files are open to the editor, the two the six chapters change:
+agent/concert/agent.py (II · III · IV · V) and agent/concert/nightly.py (VI).
+Everything else is read-only through GET /api/source.
 """
 from __future__ import annotations
 
@@ -13,10 +15,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# path → what the chapter says about it
+# path → what the chapters say about it
 FILES: dict[str, str] = {
-    "agent/agent.py": "chapter II — the one line that gives the greeter a tool",
-    "agent/instruction.txt": "the instruction the greeter runs under (read it; chapter II does not change it)",
+    "agent/concert/agent.py": "chapters II, III, IV, V — the four lines on buyer_agent and root_agent",
+    "agent/concert/nightly.py": "chapter VI — the one line that puts agree_budget first in the graph",
 }
 
 
@@ -44,22 +46,34 @@ def validate(path: str, content: str) -> dict:
 
 def symbol_span(content: str, symbol: str) -> tuple[int, int] | None:
     """1-based inclusive line span of a top-level `def symbol` or `symbol = …`,
-    extended over the indented comment lines right after the body."""
+    extended over the comment lines right above it (the 👉 notes) and, for a
+    def, the indented comment lines right after the body."""
     try:
         tree = ast.parse(content)
     except SyntaxError:
         return None
     lines = content.splitlines()
+
+    def up(start: int) -> int:
+        while start > 1 and lines[start - 2].lstrip().startswith("#"):
+            start -= 1
+        return start
+
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == symbol:
             start = min([node.lineno] + [d.lineno for d in node.decorator_list])
             end = node.end_lineno or node.lineno
             while end < len(lines) and lines[end].strip().startswith("#") and lines[end][:1] in (" ", "\t"):
                 end += 1
-            return start, end
+            return up(start), end
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == symbol
                                                 for t in node.targets):
-            return node.lineno, node.end_lineno or node.lineno
+            end = node.end_lineno or node.lineno
+            # …and the comment lines right after it, until a blank line: the toggle
+            # that follows `NIGHT = [...]` (chapter VI) rides along.
+            while end < len(lines) and lines[end].lstrip().startswith("#"):
+                end += 1
+            return up(node.lineno), end
     return None
 
 

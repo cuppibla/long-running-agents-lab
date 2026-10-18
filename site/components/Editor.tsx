@@ -11,9 +11,9 @@ import { readCode, sourceUrl, writeCode, type CodeFile } from "@/lib/api";
 
 type SaveState = "saved" | "unsaved" | "saving" | "invalid";
 
-export default function Editor({ path, symbol, readOnly, marker, afterMarker, fix, afterHint, foot, onSaved }: {
+export default function Editor({ path, symbol, readOnly, marker, afterMarker, fix, afterHint, change, swap, onSaved }: {
   path: string; symbol?: string; readOnly?: boolean; marker?: string; afterMarker?: string;
-  fix?: (src: string) => string; afterHint?: string; foot?: React.ReactNode; onSaved?: () => void;
+  fix?: (src: string) => string; afterHint?: string; change?: [string, string]; swap?: boolean; onSaved?: () => void;
 }) {
   const [file, setFile] = useState<CodeFile | null>(null);
   const [code, setCode] = useState("");
@@ -75,24 +75,25 @@ export default function Editor({ path, symbol, readOnly, marker, afterMarker, fi
   };
 
   const lines = code.split("\n");
-  const markerLine = marker ? lines.findIndex((l) => l.includes(marker)) + 1 : 0;
   const isDone = fix ? fix(code) === code : false;
+  const markerLine = marker && !isDone ? lines.findIndex((l) => l.includes(marker)) + 1 : 0;
   const editedLine = isDone && afterMarker ? lines.findIndex((l) => l.includes(afterMarker) && !l.trimStart().startsWith("#")) + 1 : 0;
   const markerIsComment = markerLine > 0 && lines[markerLine - 1].trimStart().startsWith("#");
+  const verb = swap ? "swap" : markerIsComment ? "delete the “# ” on" : "edit";
   const chip = readOnly ? <span className="pill read">read only</span>
-    : state === "saved" && savedHere && file?.validation.valid ? <span className="pill pass">saved · {afterHint || "lands on your next run"}</span>
+    : state === "saved" && savedHere && file?.validation.valid ? <span className="pill mint">saved · {afterHint || "lands on your next run"}</span>
     : state === "saved" ? <span className="pill read">as on disk</span>
-    : state === "invalid" ? <span className="pill fail">not saved · {file?.validation.message || err}</span>
+    : state === "invalid" ? <span className="pill hot">not saved · {file?.validation.message || err}</span>
     : state === "saving" ? <span className="pill read">saving…</span>
     : <span className="pill read">unsaved</span>;
 
   return (
-    <div className={"editor" + (path.endsWith(".txt") ? " wrap" : "")}>
-      <div className="hd">
-        <span>{path}{symbol ? <> · <b>{symbol}</b></> : null}{markerLine > 0 && !readOnly && !isDone && (
-          <span style={{ color: "var(--sage-ink)" }}> · {markerIsComment ? "delete the “# ” on" : "edit"} line {markerLine}</span>)}{editedLine > 0 && (
-          <span style={{ color: "var(--sage-ink)" }}> · line {editedLine} edited</span>)}</span>
-        <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
+    <div className={"editor" + (path.endsWith(".txt") || path.endsWith(".md") ? " wrap" : "")}>
+      <div className="bar">
+        <span><b>{path}</b>{symbol ? <> · {symbol}</> : null}{file?.span ? <span className="dim"> · lines {file.span[0]}–{file.span[1]}</span> : null}
+          {markerLine > 0 && !readOnly && <span className="mark-note"> · {verb} line {file?.span ? file.span[0] + markerLine - 1 : markerLine}</span>}
+          {editedLine > 0 && <span className="ok-note"> · line {file?.span ? file.span[0] + editedLine - 1 : editedLine} edited</span>}</span>
+        <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <a className="src" href={sourceUrl(path)} target="_blank" rel="noreferrer" title="the whole file, as it is on disk">whole file ↗</a>
           {onDisk !== null && (
             <button className="pill gold" onClick={() => { known.current = { code: onDisk, original: onDisk }; setCode(onDisk); setOnDisk(null); setState("saved"); }}>
@@ -102,7 +103,7 @@ export default function Editor({ path, symbol, readOnly, marker, afterMarker, fi
           {chip}
         </span>
       </div>
-      {err && !file ? <div className="ln" style={{ color: "var(--tomato)", padding: 12 }}>{err}</div> : (
+      {err && !file ? <div className="ln" style={{ color: "var(--coral-ink)", padding: 12 }}>{err}</div> : (
         <div className="body">
           <pre aria-hidden>
             {lines.map((l, i) => {
@@ -110,23 +111,22 @@ export default function Editor({ path, symbol, readOnly, marker, afterMarker, fi
               const comment = t.startsWith("#");
               const target = Boolean(marker) && !isDone && !readOnly && l.includes(marker as string);
               const edited = editedLine > 0 && i + 1 === editedLine;
-              const cls = target ? "target" : edited ? "edited" : comment ? "hint" : "";
-              return <div key={i} className={"ln " + cls}><span className="no">{i + 1}</span><span>{l || " "}</span></div>;
+              const cls = target ? "mark" : edited ? "mark ok" : comment ? (t.startsWith("# 👉") ? "cmt" : "cm") : "";
+              return <div key={i} className={"ln " + cls}><i>{(file?.span ? file.span[0] : 1) + i}</i><span>{l || " "}</span>{target && <em>← the one line</em>}{edited && <em>← edited · saved</em>}</div>;
             })}
           </pre>
           <textarea value={code} onChange={(e) => onChange(e.target.value)} readOnly={readOnly} spellCheck={false}
             rows={lines.length} aria-label={`${path}${symbol ? " · " + symbol : ""}`} />
         </div>
       )}
-      {(fix || foot) && !readOnly && (
-        <div className="ft">
-          {fix && (isDone
-            ? <span style={{ color: "var(--sage-ink)" }}>✓ the edit is in. {afterHint || "It lands on your next run."}</span>
-            : <><span>Stuck? </span><button className="copy" onClick={applyFix}>apply the edit for me</button><span> — then read what changed before you go on.</span></>)}
-          {foot && <span style={{ flexBasis: "100%" }}>{foot}</span>}
+      {change && <div className="wasnow"><span className="k">was</span><span className="was">{change[0]}</span><span className="k">now</span><span className="now">{change[1]}</span></div>}
+      {fix && !readOnly && (
+        <div className="efoot">
+          {isDone
+            ? <span className="ok-note">✓ the edit is in · {afterHint || "it lands on your next run"}</span>
+            : <><span>edit the one line, or</span><span><button className="copy" onClick={applyFix}>apply the edit for me</button></span></>}
         </div>
       )}
-      {foot && readOnly && <div className="ft"><span>{foot}</span></div>}
     </div>
   );
 }
