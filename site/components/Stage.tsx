@@ -4,32 +4,49 @@ import { getJob, startJob, type Job, type Progress, type Wake } from "@/lib/api"
 import type { Folded } from "@/lib/useEvents";
 import { ART, CHAPTERS, LINE } from "@/lib/chapters";
 
-/** The stage: ONE big character per chapter with a name plate, four readouts,
- *  the talk box (the MonsterTix front door — it posts to /api/say, and if the
- *  run is parked on a question your words are the answer), the world buttons
- *  (the venue panel's, in-process) and the two doors of this lab: 🐓 wake it at
- *  3am (clock.py as a job → /api/wake, nobody there) and 💀 kill the process.
- *  Everything shown is a projection of receipts and the event log. */
+/** The stage, v2: the scene (the cast doing this chapter's thing), the agent speaking
+ *  from it (one bubble — its latest sentence and its state), three numbers, one talk
+ *  row with this step's sentence already in the box, and the two doors of this lab:
+ *  🐓 wake it at 3am (clock.py as a job → /api/wake, nobody there) and, in chapter III,
+ *  💀 kill the process. The world buttons fold away. The whole thread lives in the
+ *  chapter panel's transcript fold and in 🧾. Everything shown is a projection of
+ *  receipts and the event log. */
 
 const Av = ({ who }: { who: "rook" | "sleeper" | "clock" | "boxoffice" | "sam" }) => (
   <span className={`av av-${who}`} style={{ backgroundImage: `url(${ART.av[who]})` }} aria-hidden />
 );
 
-export default function Stage({ chapter, p, f, name, busy, onSay, onWorld, onKill, onChanged, onNew }: {
-  chapter: number; p: Progress | null; f: Folded; name: string; busy: boolean;
+/** what the latest run says about itself — one plate line */
+export function plateOf(w: Wake | null, p: Progress | null): { who: string; status: string; mint: boolean } {
+  const who = w?.kind === "Workflow" ? "the graph" : "the agent";
+  if (!w) return { who, status: "asleep", mint: false };
+  const boot = w.boot_id && p?.boot_id && w.boot_id !== p.boot_id ? ` · boot ${w.boot_id}` : "";
+  if (w.awaiting) {
+    const id = String((w.turn_interrupts || []).slice(-1)[0] || "");
+    if (id.startsWith("budget:")) return { who, status: id === "budget:ask" ? "asking you" : "reading it back" + boot, mint: false };
+    if (w.kind === "Workflow") return { who, status: `parked at check_front${w.position ? ` · ${pos(w.position)}` : ""}${boot}`, mint: false };
+    return { who, status: "asked you" + boot, mint: false };
+  }
+  if (w.orders_new?.length) { const o = w.orders_new[0]; return { who, status: `bought · ${o.seats}× ${o.section} · $${Math.round(o.total)}${boot}`, mint: true }; }
+  if ((w.turn_tools || w.tools).includes("join_queue")) return { who, status: `in line${w.position ? ` · ${pos(w.position)}` : ""}${boot}`, mint: false };
+  if ((w.turn_tools || w.tools).includes("check_queue")) return { who, status: `same ticket · ${w.boot_id === p?.boot_id ? "back" : `boot ${w.boot_id}`}`, mint: true };
+  if (w.answered) return { who, status: "answered the pause" + boot, mint: false };
+  if (w.source === "clock") return { who, status: `woke at 3:00 · ${w.calls} ${w.calls === 1 ? "call" : "calls"}${boot}`, mint: w.calls > 0 };
+  return { who, status: (w.turn_tools ?? w.tools).length ? `replied · ${(w.turn_tools ?? w.tools).join(" · ")}` : "replied · no tool call", mint: false };
+}
+const pos = (n: number) => `#${n.toLocaleString()}`;
+
+export default function Stage({ chapter, p, f, name, busy, awake, onSay, onWorld, onKill, onChanged, onNew }: {
+  chapter: number; p: Progress | null; f: Folded; name: string; busy: boolean; awake: boolean;
   onSay: (text: string) => void; onWorld: (action: string, body?: Record<string, unknown>) => Promise<void>; onKill: () => void; onChanged: () => void; onNew: () => void;
 }) {
   const c = CHAPTERS[chapter - 1];
-  const after = chapter === 2 && Boolean(p?.lit?.["2"]);
-  const img = after && c.star.afterImg ? c.star.afterImg : c.star.img;
-  const role = after && c.star.afterRole ? c.star.afterRole : c.star.role;
-  // chapter VI: the sleeper is awake once the graph has asked them something
-  const awake = after || (chapter === 6 && Boolean(p?.budget?.after?.asked));
-  const quick = Array.from(new Set(c.steps.filter((s) => s.say).map((s) => s.say as string)));     // this chapter's sentences, in order, once each
-  const defaultLine = quick[0] || LINE;
-  const [text, setText] = useState(defaultLine);
-  const lastDefault = useRef(defaultLine);
-  useEffect(() => { if (text === lastDefault.current || !text) setText(defaultLine); lastDefault.current = defaultLine; }, [defaultLine]); // eslint-disable-line react-hooks/exhaustive-deps
+  const now = c.now(p);
+  const cur = c.steps[Math.min(now.n, c.steps.length) - 1];
+  const prefill = (now.n <= c.steps.length && cur.say) || (c.steps.find((s) => s.say) || {}).say || LINE;
+  const [text, setText] = useState(prefill);
+  const lastDefault = useRef(prefill);
+  useEffect(() => { if (text === lastDefault.current || !text) setText(prefill); lastDefault.current = prefill; }, [prefill]); // eslint-disable-line react-hooks/exhaustive-deps
   const [wake, setWake] = useState<Job | null>(null);
   const wakePrev = useRef("idle");
   useEffect(() => {
@@ -41,67 +58,55 @@ export default function Stage({ chapter, p, f, name, busy, onSay, onWorld, onKil
   const wakeRunning = wake?.state === "running";
   const fire = async () => { try { await startJob("wake"); } catch (e) { alert((e as Error).message); } try { setWake(await getJob("wake")); } catch { /* away */ } };
 
-  const thread: Wake[] = (p?.thread || []).slice(-4);
-  const reads = c.reads(p);
-  const clockState = wakeRunning ? (f.clock === "fired" ? "fired · running" : `armed · fires in ${Math.max(0, 10 - Math.round(wake?.elapsed || 0))} s`) : (p?.clock_runs ? `fired · ${p.clock_runs}×` : "idle");
+  const thread: Wake[] = p?.thread || [];
+  const last = thread.length ? thread[thread.length - 1] : null;
+  const running = f.running && (f.kind === "stage" || f.kind === "clock");
+  const plate = running ? { who: last?.kind === "Workflow" || p?.code?.graph ? "the graph" : "the agent", status: `running${f.calledSoFar.length ? ` · ${f.calledSoFar.join(" · ")}` : ""}`, mint: false } : plateOf(last, p);
+  const said = running ? "…" : f.error ? f.error : last ? (last.reply || (last.awaiting ? "(the run stopped on a question)" : "(no text)")) : "Nobody has spoken yet. Say the sentence in the box, or press 🐓 and say nothing.";
+  const nums = c.nums(p);
+  const clockState = wakeRunning ? (f.clock === "fired" ? "fired · running" : `armed · ${Math.max(0, 10 - Math.round(wake?.elapsed || 0))} s`) : (p?.clock_runs ? `fired · ${p.clock_runs}×` : "idle");
   const sixty = (p?.venue?.clock || 1) >= 60;
 
   return (
     <div className="card stage">
       <div className="scene">
-        {/* a plain <img> with a gradient behind it; a missing file shows the gradient */}
-        <img className="star" src={img} alt="" />
-        <div className="starcap"><b>{c.star.name}</b><span>{role}</span></div>
-        <div className={"chip sleeper" + (awake ? " awake" : "")}><Av who="sleeper" /><span><b>{name || "you"}</b> · {awake ? (chapter === 6 ? "awake · asked" : "awake") : "asleep"}</span></div>
+        <img className="star scenepic" src={`/art/scenes/${c.scene}.jpg`} alt="" />
+        <div className={"chip sleeper" + (awake ? " awake" : "")}><Av who="sleeper" /><span><b>{name || "you"}</b> · {awake ? "awake" : "asleep"}</span></div>
         <div className={"chip clockchip" + (wakeRunning ? " firing" : "")}><Av who="clock" /><span><b>the clock</b> · {clockState}</span></div>
+        <div className="speech">
+          <Av who="rook" />
+          <div>
+            <div className={"plate" + (plate.mint ? " mint" : "")}>{plate.who} · {plate.status}</div>
+            <div className={"txt" + (last?.awaiting && !running ? " ask" : "") + (f.error && !running ? " err" : "")}>{said}</div>
+          </div>
+        </div>
       </div>
 
-      <div className="reads">
-        {reads.map((r, i) => <div key={i} className={"read " + (r.cls || (i === 0 ? "hi" : ""))}><div className="k">{r.k}</div><div className="v">{r.v}</div><div className="sub">{r.s || " "}</div></div>)}
+      <div className="nums">
+        {nums.map((r, i) => <div key={i} className={"num " + (r.cls || "")}><div className="v">{r.v}</div><div className="k">{r.k}{r.s ? ` · ${r.s}` : ""}</div></div>)}
       </div>
 
       <div className="talk">
-        {thread.length === 0 && !f.running && (
-          <div className="bubble"><Av who="rook" /><div><div className="who">the agent</div><div className="txt" style={{ color: "var(--sub)" }}>Nobody has spoken. Say the plan, or press 🐓 and say nothing.</div></div></div>
-        )}
-        {thread.map((w) => (
-          <div key={w.ts + w.session_id} className="turn">
-            {w.source === "clock"
-              ? <div className="bubble"><Av who="clock" /><div><div className="who">the clock · 3:00 · {w.session_id}{w.answered ? ` · answers the pause ${String(w.answered).slice(0, 12)}` : ""}</div><div className="txt">{w.message}</div></div></div>
-              : <div className="bubble you"><Av who="sleeper" /><div><div className="who">{w.who || "you"}</div><div className="txt">{w.message}</div></div></div>}
-            <div className="bubble"><Av who="rook" /><div>
-              <div className="who">{w.kind === "Workflow" ? "the graph" : "the agent"}{w.kind === "Workflow" && (w.nodes || []).length ? ` · ran ${(w.nodes || []).map((x) => x.node).filter((x, i, a) => a.indexOf(x) === i).join(" → ")}` : ""}{(w.turn_tools ?? w.tools).length ? ` · called ${(w.turn_tools ?? w.tools).join(" · ")}` : w.kind === "Workflow" ? "" : " · no tool call"}{w.orders_new.length ? ` · bought ${w.orders_new.map((o) => `${o.seats}× ${o.section} ${(o.weekday || "").slice(0, 3)}`).join(", ")}` : ""}{w.awaiting && w.turn_interrupts?.length ? ` · parked on ${String(w.turn_interrupts.slice(-1)[0]).slice(0, 14)}` : ""}{w.boot_id && p?.boot_id && w.boot_id !== p.boot_id ? ` · boot ${w.boot_id}` : ""}</div>
-              <div className={"txt" + (w.awaiting ? " ask" : "")}>{w.reply || (w.awaiting ? "(the run stopped on a question)" : "(no text)")}</div>
-            </div></div>
-          </div>
-        ))}
-        {f.running && (f.kind === "stage" || f.kind === "clock") && (
-          <div className="bubble"><Av who="rook" /><div><div className="who">the agent · running{f.calledSoFar.length ? ` · ${f.calledSoFar.join(" · ")}` : ""}</div><div className="txt" style={{ color: "var(--sub)" }}>…</div></div></div>
-        )}
-        {f.error && <div className="bubble"><Av who="rook" /><div><div className="who">error</div><div className="txt" style={{ color: "var(--coral-ink)" }}>{f.error}</div></div></div>}
-        <div className="input">
-          <input className="box" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !busy && text.trim()) onSay(text); }} placeholder="talk to it…" aria-label="talk to the agent" />
-          <button className="btn night on" disabled={busy || f.running} onClick={() => text.trim() && onSay(text)}>{busy ? "…" : "send"}</button>
-        </div>
-        <div className="quick">
-          {quick.map((q) => <button key={q} className={"copy" + (text === q ? " on" : "")} onClick={() => setText(q)} title={q}>{q.length > 34 ? q.slice(0, 32) + "…" : q}</button>)}
-          <button className="copy" onClick={onNew} title="a fresh session id — nothing is deleted; the old conversation stays in lab.db">↻ new conversation</button>
-        </div>
+        <input className="box" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !busy && text.trim()) onSay(text); }} placeholder="talk to it…" aria-label="talk to the agent" />
+        <button className="btn sun" disabled={busy || f.running} onClick={() => text.trim() && onSay(text)}>{busy ? "…" : "send"}</button>
       </div>
-
-      <div className="world">
-        <span className="k">the world</span>
-        <button className="btn night" onClick={() => onWorld("reset")} title="the venue: every ticket, order and feed line gone; the tour re-seeded">reset</button>
-        <button className="btn night" onClick={() => onWorld("advance-queue")} title="every waiting ticket straight to the front">skip the wait</button>
-        <button className="btn night" onClick={() => onWorld("sellout", { section: "A" })} title="section A sold out for both Amsterdam shows — the seat map the agent holds becomes a lie">sell the good seats</button>
-        <button className="btn night" onClick={() => onWorld("hang-once")} title="the next purchase commits, then fails its response — the platform retries">break the next purchase</button>
-        <button className={"btn night" + (sixty ? " on" : "")} onClick={() => onWorld("clock", { multiplier: sixty ? 1 : 60 })} title="how fast the queue drains: 40 minutes at 1×, 40 seconds at 60×">{sixty ? "60× → 1×" : "1× → 60×"}</button>
-      </div>
-      <div className="special">
-        <button className={"btn night" + (wakeRunning ? " on" : "")} id="wakebtn" disabled={wakeRunning || f.running} onClick={fire} title="monstertix/clock.py --in 10 → POST /api/wake · nobody is at the keyboard">
-          {wakeRunning ? (f.clock === "fired" ? "🐓 fired · the agent is running" : `🐓 armed · ${Math.max(0, 10 - Math.round(wake?.elapsed || 0))} s`) : p?.clock_runs ? "🐓 wake it again" : "🐓 wake it at 3am"}
+      <div className="doors">
+        <button className={"btn sky" + (wakeRunning ? " on" : "")} id="wakebtn" disabled={wakeRunning || f.running} onClick={fire} title="monstertix/clock.py --in 10 → POST /api/wake · nobody is at the keyboard">
+          {wakeRunning ? (f.clock === "fired" ? "🐓 fired · the agent is running" : `🐓 armed · ${Math.max(0, 10 - Math.round(wake?.elapsed || 0))} s`) : "🐓 wake it at 3am"}
         </button>
-        <button className="btn night kill" onClick={onKill} disabled={f.running || wakeRunning} title="the process really dies; lab.sh brings it back with a new boot id">💀 kill the process{p?.boots && p.boots > 1 ? ` · boot ${p.boots}` : ""}</button>
+        {chapter === 3 && <button className="btn kill" onClick={onKill} disabled={f.running || wakeRunning} title="the process really dies; lab.sh brings it back with a new boot id">💀 kill the process{p?.boots && p.boots > 1 ? ` · boot ${p.boots}` : ""}</button>}
+        <button className="more" onClick={onNew} title="a fresh session id — nothing is deleted; the old conversation stays in lab.db">↻ new conversation</button>
+        <span className="sp" />
+        <details className="world">
+          <summary className="more">the world ▾</summary>
+          <div className="row">
+            <button className="btn" onClick={() => onWorld("reset")} title="the venue: every ticket, order and feed line gone; the tour re-seeded">reset</button>
+            <button className="btn" onClick={() => onWorld("advance-queue")} title="every waiting ticket straight to the front">skip the wait</button>
+            <button className="btn" onClick={() => onWorld("sellout", { section: "A" })} title="section A sold out for both Amsterdam shows — the seat map the agent holds becomes a lie">sell the good seats</button>
+            <button className="btn" onClick={() => onWorld("hang-once")} title="the next purchase commits, then fails its response — the platform retries">break the next purchase</button>
+            <button className={"btn" + (sixty ? " on" : "")} onClick={() => onWorld("clock", { multiplier: sixty ? 1 : 60 })} title="how fast the queue drains: 40 minutes at 1×, 40 seconds at 60×">{sixty ? "60× → 1×" : "1× → 60×"}</button>
+          </div>
+        </details>
       </div>
     </div>
   );

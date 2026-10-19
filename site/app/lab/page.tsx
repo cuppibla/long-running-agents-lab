@@ -4,7 +4,6 @@ import Link from "next/link";
 import Breakfast from "@/components/Breakfast";
 import Chapter from "@/components/Chapter";
 import Console from "@/components/Console";
-import NightShift from "@/components/NightShift";
 import Rail from "@/components/Rail";
 import Stage from "@/components/Stage";
 import Workbench from "@/components/Workbench";
@@ -12,12 +11,14 @@ import { getHealth, getProgress, kill, newSession, say, startJob, world, type Pr
 import { ART, CHAPTERS, SHOW } from "@/lib/chapters";
 import { isBig, useEvents } from "@/lib/useEvents";
 
-/** The lab — one page, fixed shape.
- *  Left, the stage. Right, the night shift and the chapter panel. The stubs
- *  above tear from /api/progress, which reads your files and the receipts.
+/** The lab — one page, fixed shape (v2, the sparse page).
+ *  Head: the title, the seven stubs, you, 🧾, 🔬. Left, the stage (the scene, the agent
+ *  speaking, three numbers, the talk row, the doors). Right, the chapter panel (NOW, the
+ *  ticks, the track, the folds). The stubs tear from /api/progress, which reads your files
+ *  and the receipts.
  *
  *  ?ch=N        open on chapter N (deep link)
- *  ?still=1     read the log once instead of holding the SSE open (headless Chrome)
+ *  ?still=1     read the log once instead of holding the SSE open (headless Chrome); no transitions
  *  ?console=1   open the console under the page
  *  ?check=1     open the breakfast message
  *  ?as=Name     seat a name (captures) */
@@ -126,7 +127,7 @@ export default function LabPage() {
   const torn = ["1", "2", "3", "4", "5", "6"].filter((k) => lit[k]).length;
   const venueUp = Boolean(p?.venue?.ok);
   const status = !f.connected ? ["off", "the lab is away"] : f.running ? ["busy", f.kind === "clock" ? "the clock's run" : f.kind === "stage" ? "replying…" : `${f.kind} running`] : [venueUp ? "" : "off", venueUp ? `the venue is up · ${p?.venue?.clock || 1}×` : "the venue is down"];
-  const asleep = !((chapter === 2 && lit["2"]) || (chapter === 6 && p?.budget?.after?.asked));
+  const awake = Boolean((chapter === 2 && lit["2"]) || (chapter === 6 && p?.budget?.after?.asked));
 
   return (
     <div className={"wrap" + (still ? " still" : "")}>
@@ -134,14 +135,14 @@ export default function LabPage() {
         <div>
           <div className="eyebrow"><Link href="/">{SHOW.eyebrow}</Link></div>
           <h1 className="display">{SHOW.title.replace(SHOW.em, "")}<em>{SHOW.em}</em></h1>
-          <div className="tag">{SHOW.tag}</div>
         </div>
+        <Rail current={chapter} lit={lit} onPick={go} />
         <div className="headr">
-          <span className="status"><i className={status[0]} />{status[1]}{p?.boot_id ? <span className="dim"> · boot {p.boot_id}</span> : null}</span>
+          <span className="status" title={SHOW.tag}><i className={status[0]} />{status[1]}{p?.boot_id ? <span className="dim"> · {p.boot_id}</span> : null}</span>
           <span className="youchip" title={sid ? `your conversation · ${sid} · click for a new one` : "no conversation yet"} onClick={newConversation} style={{ cursor: "pointer" }}>
-            <span className="av av-sleeper" style={{ backgroundImage: `url(${ART.av.sleeper})` }} /><span><b>{name || "you"}</b> · {asleep ? "asleep · 3:00am" : "awake"} · {torn}/6</span>
+            <span className="av av-sleeper" style={{ backgroundImage: `url(${ART.av.sleeper})` }} /><span><b>{name || "you"}</b> · {awake ? "awake" : "asleep"} · {torn}/6</span>
           </span>
-          <button className={"btn" + (console_ ? " on" : "")} onClick={() => setConsole(!console_)}>🧾 console</button>
+          <button className={"btn" + (console_ ? " on" : "")} onClick={() => setConsole(!console_)} title="the console: one event stream">🧾</button>
           <span style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 8 }}>
             {nudge && !drawer && <span className="wbnudge" onClick={() => openDrawer(true)}>{nudge}</span>}
             <button className={"btn" + (drawer ? " on" : "") + (nudge && !drawer ? " nudge" : "")} onClick={() => openDrawer(!drawer)}>🔬 workbench</button>
@@ -149,13 +150,10 @@ export default function LabPage() {
         </div>
       </div>
 
-      <Rail current={chapter} lit={lit} onPick={go} />
-
       <div className="main">
-        <Stage chapter={chapter} p={p} f={f} name={name} busy={busy} onSay={onSay} onWorld={onWorld} onKill={onKill} onChanged={refresh} onNew={newConversation} />
+        <Stage chapter={chapter} p={p} f={f} name={name} busy={busy} awake={awake} onSay={onSay} onWorld={onWorld} onKill={onKill} onChanged={refresh} onNew={newConversation} />
         <div className="col">
-          <NightShift n={chapter} p={p} f={f} />
-          <Chapter n={chapter} p={p} f={f} onGo={go} onChanged={refresh} onCheck={() => setCheck(true)} onWorkbench={() => openDrawer(true)} onWake={onWake} />
+          <Chapter n={chapter} p={p} f={f} onGo={go} onChanged={refresh} onCheck={() => setCheck(true)} onWorkbench={() => openDrawer(true)} onWake={onWake} onWorld={onWorld} onKill={onKill} />
         </div>
       </div>
 
