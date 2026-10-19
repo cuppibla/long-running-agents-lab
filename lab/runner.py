@@ -226,7 +226,7 @@ async def run(message: str, *, session_id: str | None, attended: bool, source: s
             "tools": calls, "calls": len(calls), "turn_tools": turn_tools, "tools_in_file": tools_in_file, "kind": kind,
             "orders_new": [_short_order(o) for o in orders_new], "boot_id": state.BOOT_ID,
             "elapsed": round(time.time() - t0, 1), "code": progress.code_facts(),
-            "db": {k: db.get(k) for k in ("events", "interrupts", "compactions", "invocations", "state", "responses", "interrupt_ids")},
+            "db": {k: db.get(k) for k in ("events", "interrupts", "compactions", "invocations", "state", "responses", "interrupt_ids", "temp_keys")},
             "tickets": _tickets(),
             # chapters V and VI: what THIS run answered, asked and walked
             "answered": answered, "turn_interrupts": turn.get("interrupts") or [], "turn_nodes": turn.get("nodes") or [],
@@ -235,7 +235,7 @@ async def run(message: str, *, session_id: str | None, attended: bool, source: s
         })
         if attended:
             state.set_("stage", {"session_id": sid, "ts": row["ts"]})
-        return {"ok": True, "episode": ep, **out, **{k: row[k] for k in ("tools", "calls", "turn_tools", "orders_new", "boot_id", "reply", "tools_in_file", "kind", "elapsed", "awaiting", "db", "tickets", "answered", "turn_interrupts", "turn_nodes", "nodes", "position")}}
+        return {"ok": True, "episode": ep, **out, **{k: row[k] for k in ("tools", "calls", "turn_tools", "orders_new", "boot_id", "reply", "tools_in_file", "kind", "elapsed", "awaiting", "db", "tickets", "answered", "turn_interrupts", "turn_nodes", "nodes", "position", "artifacts", "memory_facts")}}
 
 
 def _artifact_files(session_id: str) -> list[str]:
@@ -321,10 +321,13 @@ async def session_calls(session_id: str, since: int = 0) -> dict:
                 responses.append(_receipt(fr.name, fr.response, ev.invocation_id, invocations.index(ev.invocation_id) if ev.invocation_id in invocations else None))
         if ev.actions and getattr(ev.actions, "compaction", None):
             compactions += 1
+    # `state` is what lab.db holds for the session after this run, every key as saved —
+    # `temp_keys` lists the temp: ones among them, which is always none: the session service
+    # strips temp: from the event before the write (chapter II's third chip reads that fact)
     return {"exists": True, "calls": calls, "interrupts": interrupts, "compactions": compactions,
             "events": len(s.events or []), "invocations": len(invocations), "responses": responses,
             "interrupt_ids": asked[-12:], "turn": turn,
-            "state": {k: v for k, v in (s.state or {}).items() if not k.startswith("temp:")}}
+            "state": dict(s.state or {}), "temp_keys": [k for k in (s.state or {}) if k.startswith("temp:")]}
 
 
 #: the tool responses a receipt keeps — what the venue (or fence.py) handed the model

@@ -23,7 +23,8 @@ export type Wake = {
   said: string[]; reply: string; awaiting: boolean; tools: string[]; calls: number; turn_tools?: string[]; tools_in_file: string[]; kind: string;
   orders_new: Order[]; boot_id: string; elapsed: number; code: CodeFacts;
   db?: { events?: number; interrupts?: number; compactions?: number; invocations?: number; state?: Record<string, unknown>; responses?: ToolResponse[];
-    interrupt_ids?: { id: string; answered: boolean; node: string | null }[] };
+    interrupt_ids?: { id: string; answered: boolean; node: string | null }[];
+    temp_keys?: string[] };            // temp: keys lab.db holds for the session after this run — always none (stripped before the write)
   artifacts?: string[]; memory_facts?: number;
   tickets?: number;                       // queue tickets the venue held when this run ended (chapter III wants exactly one)
   /** chapters V and VI: the interrupt this run ANSWERED (the stage's words, or the clock's), the interrupts it emitted,
@@ -59,6 +60,12 @@ export type BudgetReceipt = {
     unattended: number; order: Order | null; request: string; ts: number; reply: string; lit: boolean } | null;
   probe: { session_id: string; text: string; ts: number; asked: boolean } | null;
 };
+/** chapter II's longer conversation (the replay job): eight turns in one session, compaction, budget_plan, the 8-seat order */
+export type ReplayReceipt = {
+  after: { session_id: string; turns: number; of: number; sentences: string[]; compactions: number; compaction_at: number | null;
+    plans: string[]; overwritten: boolean; split_calls: number; noted: boolean; asked_back: string; order: Order | null; eight: boolean; saturday: boolean; order_turn: number | null;
+    elapsed: number; ts: number; reply: string; done: boolean; code: Partial<CodeFacts>; lit: boolean } | null;
+};
 export type Venue = {
   ok: boolean; order_count: number; orders: Order[]; tickets: number; clock: number; hang_armed?: boolean;
   queue?: { ticket: string; position: number; ready: boolean; event_id: string }[];
@@ -72,7 +79,7 @@ export type Progress = {
   wakes: Wake[]; wakes_total?: number; last_wake: Wake | null; stage: { session_id?: string; ts?: number | null };
   thread: Wake[]; clock_runs: number; clock_calls: number | null;
   before: Wake | null; after: Wake | null;
-  kill: KillReceipt | null; fence: FenceReceipt; graph: GraphReceipt; budget: BudgetReceipt;
+  kill: KillReceipt | null; fence: FenceReceipt; graph: GraphReceipt; budget: BudgetReceipt; replay?: ReplayReceipt;
   venue: Venue; mode: string; wake_message: string; error: string | null;
 };
 export const getHealth = () => j<{ ok: boolean; boot_id: string; mode: string; venue: string; port: number }>("/health");

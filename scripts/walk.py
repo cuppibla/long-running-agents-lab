@@ -6,12 +6,20 @@ job — and reports which stubs tore.
     uv run python scripts/walk.py --restore            # restore only: every "# " back, root_agent = buyer_agent, the venue reset, memory re-seeded
     uv run python scripts/walk.py --only 5             # one chapter   (add --restore to restore afterwards)
     uv run python scripts/walk.py --all --restore      # walk I–VI, then restore
+    uv run python scripts/walk.py --replay             # chapter II's ▶ only: the longer conversation (recall must be in)
+    uv run python scripts/walk.py --all --skip-replay  # I–VI without the eight-turn replay (~1 min less)
     uv run python scripts/walk.py --base http://127.0.0.1:3499
 
 Chapter I: say the plan on the stage, wait, prove nothing ran, then start the
 clock job (monstertix/clock.py --in 10 → POST /api/wake) and read the receipt.
 Chapter II: a 3am wake as shipped (no recall) for the before-number, delete the
-"# " on `recall, remember,`, wake again, read the order.
+"# " on `recall, remember,`, wake again, read the order. Then the two optional
+sentences in a fresh conversation ("Sam can't do weeknights, by the way." →
+note_companion → user:prefs; "Show me the seat map…" → get_seatmap → an artifact,
+and no temp: key in lab.db), then ▶ the longer conversation: the replay job says
+the source lab's eight step-5 sentences into one fresh session — compaction fires
+(a summary event after turn 3 and 6), budget_plan is overwritten by the 10-person
+plan, and the 8× C $760 order lands. --skip-replay leaves the replay out.
 Chapter III: delete the "# " on the queue tools, ask for the tickets on the stage
 (it joins the queue), POST /api/kill, wait for the new boot, ask "Where am I in
 line?" in the same session — the same ticket, read back by the next process.
@@ -55,6 +63,9 @@ YES = "Yes, that’s right."
 PLAN = "Grab us two tickets the moment the presale opens. Keep checking."
 LINE = "The presale just opened. Get us tickets to the Amsterdam show."
 WHICH = "The Saturday show, please."                     # if it asks which show (recall should have told it)
+SAM = "Sam can't do weeknights, by the way."              # chapter II, optional: note_companion → user:prefs
+SEATMAP = "Show me the seat map for the Amsterdam Saturday show."   # chapter II, optional: get_seatmap → an artifact + temp:
+SKIP_REPLAY = False
 WHERE = "Where am I in line?"
 SEATS = "How much are the seats, and what's still available?"
 BUY = "Buy the two section A seats."
@@ -192,7 +203,38 @@ def chapter2() -> bool:
     if not ok:
         o = (after or {}).get("orders_new") or []
         say(f"not lit: recall called = {'recall' in (after or {}).get('tools', [])} · order event = {[x['event_id'] for x in o]} (need {SATURDAY})")
+    say("── the two optional sentences, in a fresh conversation (where it lives) ──")
+    sid = api("/session/new", {})["session_id"]
+    r = stage(SAM, sid)
+    st = (r.get("db") or {}).get("state") or {}
+    say(f"  note_companion {'note_companion' in (r.get('turn_tools') or [])} · user:prefs {st.get('user:prefs')}")
+    r = stage(SEATMAP, sid)
+    db = r.get("db") or {}
+    say(f"  get_seatmap {'get_seatmap' in (r.get('turn_tools') or [])} · artifacts {r.get('artifacts')} · temp: keys in lab.db {db.get('temp_keys')} · state keys {sorted((db.get('state') or {}).keys())}")
+    if not SKIP_REPLAY:
+        replay()
     return ok
+
+
+def replay() -> dict:
+    """▶ the longer conversation: the replay job (lab/replay.py) — the source lab's eight
+    step-5 sentences into one fresh session. Returns the receipt; prints the numbers."""
+    say("── ▶ a longer conversation: the replay job ──")
+    p = progress()
+    if not p["code"].get("recall"):
+        say("recall is not in — chapter II's line goes in first")
+        edit(AGENT, uncomment(RECALL))
+    if p["code"].get("queue"):
+        say("note: the queue tools are in — the booking will join the queue instead of buying (chapter II's replay is meant for the file as chapter II leaves it)")
+    run_job("replay")
+    r = (progress().get("replay") or {}).get("after") or {}
+    o = r.get("order") or {}
+    order = f"{o.get('seats')}× {o.get('section')} ${o.get('total'):g} on turn {r.get('order_turn')}" if o else "none"
+    plan = "overwritten" if r.get("overwritten") else ("set once" if r.get("plans") else "never set")
+    say(f"replay: {r.get('turns')} of 8 turns in {r.get('session_id')} · {r.get('elapsed')} s · compactions {r.get('compactions')}"
+        f" (first after turn {r.get('compaction_at')}) · budget_plan {plan} ({r.get('split_calls')}× budget_split) · order {order}"
+        f" · asked back: {r.get('asked_back', '')[:70]!r} · ticks {'lit' if r.get('lit') else 'NOT lit'}")
+    return r
 
 
 def health() -> dict:
@@ -413,8 +455,12 @@ def main() -> int:
     ap.add_argument("--restore", action="store_true", help="put the repo back as shipped (alone: restore only)")
     ap.add_argument("--all", action="store_true", help="walk every chapter (with --restore: walk, then restore)")
     ap.add_argument("--reset", action="store_true", help="reset the venue first (a clean box office)")
+    ap.add_argument("--replay", action="store_true", help="chapter II's ▶ only: the longer conversation, against the file as it is")
+    ap.add_argument("--skip-replay", action="store_true", help="walk chapter II without the eight-turn replay")
     a = ap.parse_args()
     BASE = a.base.rstrip("/")
+    global SKIP_REPLAY
+    SKIP_REPLAY = a.skip_replay
     try:
         h = api("/health")
     except urllib.error.URLError as exc:
@@ -425,8 +471,11 @@ def main() -> int:
         api("/venue/reset", {})
         say("venue reset")
     steps = {1: chapter1, 2: chapter2, 3: chapter3, 4: chapter4, 5: chapter5, 6: chapter6}
-    todo = [a.only] if a.only else ([] if a.restore and not a.all else [1, 2, 3, 4, 5, 6])
+    todo = [a.only] if a.only else ([] if (a.restore or a.replay) and not a.all else [1, 2, 3, 4, 5, 6])
     results: dict[int, bool] = {}
+    if a.replay and not a.all:
+        results[2] = bool(replay().get("lit"))
+        say(f"replay: {'ticks LIT ✓' if results[2] else 'ticks not lit ✗'}")
     for n in todo:
         say(f"── chapter {n} ──")
         try:

@@ -14,6 +14,10 @@
          clock wake-up in that session that did not emit a budget interrupt            runs/state.json ← lab.db + venue.db
     VII  I–VI
 
+Beside the lamps, one receipt that lights ticks without tearing a stub — chapter II's
+longer conversation (the `replay` job): eight turns in one session, a compaction event
+in lab.db, `budget_plan` overwritten (output_key keeps the latest), 8× C for the Saturday show.
+
 A lamp pairs a receipt with the file facts that held when it ran — the receipt
 records them (`wakes[].code`), so a lamp earned stays earned when the "# " goes
 back. Never a checklist. Never raises — a broken file keeps the last good answer
@@ -259,6 +263,51 @@ def budget_receipt(wakes: list[dict]) -> dict:
     return out
 
 
+def replay_receipt(wakes: list[dict]) -> dict:
+    """Chapter II's longer conversation. One session the `replay` job drove (`who` == replay):
+    how many of its eight turns replied, the first turn after which lab.db held a compaction
+    event, the distinct `budget_plan` values in order (two means output_key overwrote the
+    first), budget_split calls, and the order — the source lab's 8× C $760. `lit` is the
+    tick row, not a stub: a compaction in the session, a plan overwritten, an 8-seat order."""
+    out: dict[str, Any] = {"after": None}
+    for sid, ws in _by_session(wakes).items():
+        turns = [w for w in ws if w.get("who") == "replay" and w.get("source") == "stage"]
+        if not turns:
+            continue
+        plans: list[str] = []
+        compaction_at = order_turn = None
+        for i, w in enumerate(turns, 1):
+            st = (w.get("db") or {}).get("state") or {}
+            bp = st.get("budget_plan")
+            if bp and (not plans or plans[-1] != str(bp)):
+                plans.append(str(bp))
+            if compaction_at is None and ((w.get("db") or {}).get("compactions") or 0) >= 1:
+                compaction_at = i
+            if order_turn is None and any(o.get("seats") == 8 for o in (w.get("orders_new") or [])):
+                order_turn = i
+        compactions = max(((w.get("db") or {}).get("compactions") or 0) for w in turns)
+        orders = [o for w in turns for o in (w.get("orders_new") or [])]
+        eight = next((o for o in orders if o.get("seats") == 8), None)
+        # the source's order is 8× C for the SATURDAY show (ms-ams-01, $760); an 8-seat order for the
+        # Tuesday (1 of 4 runs: the reply said Saturday, the purchase went to ms-ams-02) is the paraphrase
+        # risk made visible, and it does not earn the tick
+        saturday = bool(eight) and eight.get("event_id") == SATURDAY
+        asked_back = [w.get("reply", "")[:160] for w in turns if (w.get("message") or "").strip().lower() == "book us something."]
+        row = {"session_id": sid, "turns": len(turns), "of": 8, "sentences": [(w.get("message") or "")[:80] for w in turns],
+               "compactions": compactions, "compaction_at": compaction_at,
+               "plans": [p_[:200] for p_ in plans], "overwritten": len(plans) >= 2,
+               "split_calls": sum((w.get("turn_tools") or []).count("budget_split") for w in turns),
+               "noted": any("note_companion" in (w.get("turn_tools") or []) for w in turns),
+               "asked_back": asked_back[0] if asked_back else "",
+               "order": eight or (orders[-1] if orders else None), "eight": bool(eight), "saturday": saturday, "order_turn": order_turn,
+               "elapsed": round(sum(w.get("elapsed") or 0 for w in turns), 1), "ts": turns[-1].get("ts"),
+               "reply": (turns[-1].get("reply") or "")[:240], "done": len(turns) >= 8, "code": turns[-1].get("code") or {},
+               "lit": compactions >= 1 and len(plans) >= 2 and saturday}
+        if out["after"] is None or row["lit"] and not out["after"]["lit"] or (row["lit"] == out["after"]["lit"] and row["ts"] > out["after"]["ts"]):
+            out["after"] = row
+    return out
+
+
 def read() -> dict[str, Any]:
     global _last_good, _cache
     try:
@@ -271,6 +320,7 @@ def read() -> dict[str, Any]:
         fence = fence_receipt(wakes)
         graph = graph_receipt(wakes)
         budget = budget_receipt(wakes)
+        replay = replay_receipt(wakes)
         lit = {
             1: any((w.get("calls") or 0) >= 1 for w in clock_wakes),
             2: bool(saturday),
@@ -287,13 +337,14 @@ def read() -> dict[str, Any]:
             "code": code | {"memory_facts": memory_facts()},
             "lit": {str(k): v_ for k, v_ in lit.items()},
             "boot_id": state.BOOT_ID, "boots": len(boots) or 1,
-            "wakes": wakes[-10:], "wakes_total": len(wakes), "last_wake": last_clock,
+            # the last 24, not 10: the replay alone is eight stage rows, and chapters I–II read the clock's run from here
+            "wakes": wakes[-24:], "wakes_total": len(wakes), "last_wake": last_clock,
             "stage": state.STATE.get("stage") or {},
-            "thread": [w for w in wakes if w.get("source") in ("stage", "clock")][-8:],
+            "thread": [w for w in wakes if w.get("source") in ("stage", "clock")][-12:],
             "clock_runs": len(clock_wakes), "clock_calls": last_clock["calls"] if last_clock else None,
             "before": next((w for w in clock_wakes if "recall" not in (w.get("tools") or [])), None),
             "after": saturday[-1] if saturday else None,
-            "kill": kill, "fence": fence, "graph": graph, "budget": budget,
+            "kill": kill, "fence": fence, "graph": graph, "budget": budget, "replay": replay,
             "venue": v, "mode": env.MODE, "wake_message": env.WAKE_MESSAGE, "error": None,
         }
         _last_good = out

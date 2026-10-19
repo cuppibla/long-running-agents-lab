@@ -40,6 +40,8 @@ export default function Breakfast({ p, name }: { p: Progress | null; name: strin
           <tr><td><code>sqlite+aiosqlite:///lab.db</code></td><td>Cloud SQL</td><td>a connection string</td></tr>
           <tr><td><code>file://artifacts</code> · <code>memory/userx.md</code></td><td><code>gs://bucket</code></td><td>a URI · a path</td></tr>
           <tr><td>🐓 <code>monstertix/clock.py</code></td><td>Cloud Scheduler → Pub/Sub</td><td><code>trigger_sources=[&quot;pubsub&quot;]</code></td></tr>
+          <tr><td><code>/api/wake</code> finds the stage’s parked run</td><td><code>/trigger/wake</code>, not ADK’s <code>/apps/concert/trigger/pubsub</code></td><td>nothing — the default trigger opens a <b>new session per message</b>; a 3am push would never find the parked run, and would buy twice</td></tr>
+          <tr><td>a sleep and one POST, then it gives up</td><td>Pub/Sub between the Scheduler and the service</td><td>the message is <b>held</b> while the service restarts, <b>retried</b> if the call fails, and can <b>fan out</b> to a second subscriber — a trigger endpoint needs Cloud Run or GKE; Agent Runtime has no triggers</td></tr>
           <tr><td><code>/api/say</code> marks a person present</td><td><code>someone_is_there()</code></td><td>a default, overridden per request</td></tr>
           <tr><td>🔬 the workbench</td><td>one Cloud Run service</td><td>a Dockerfile and a main.py</td></tr>
         </tbody></table>

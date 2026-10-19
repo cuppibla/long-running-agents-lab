@@ -2,6 +2,8 @@
 
     wake    python -m monstertix.clock --in 10 --message "…"    (🐓 WAKE IT AT 3AM)
     seed    python -m seed.session + the memory file              (rebuild the two-days-ago session)
+    replay  python -m lab.replay                                  (▶ a longer conversation: the source lab's
+                                                                   eight step-5 sentences into one fresh session)
 
 One job of each kind at a time. A line a subprocess prints as `@@event {…}` is
 appended to the event log; the clock prints `[clock] …` lines, which
@@ -9,13 +11,15 @@ appended to the event log; the clock prints `[clock] …` lines, which
 
 The wake job does not touch the agent. It is the source lab's clock.py, verbatim:
 a sleep and a POST to /api/wake, which is where the agent runs. The receipt of
-that run is written by lab/runner.py, not here.
+that run is written by lab/runner.py, not here. The replay job is the same shape
+through the other door: eight POSTs to /api/say, one session, receipts per turn.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -159,9 +163,38 @@ def _finish_seed(job: Job) -> None:
     events.emit("seeded", session="two-days-ago", memory="memory/userx.md")
 
 
-BUILDERS = {"wake": _wake, "seed": _seed}
-FINISHERS = {"wake": _finish_wake, "seed": _finish_seed}
-TRANSLATE = {"wake": _translate_clock}
+# ── replay: the longer conversation (chapter II) ─────────────────────────────
+def _replay(**_) -> Job:
+    from lab import replay                                         # noqa: PLC0415 — the sentence list, nothing else
+    job = Job("replay", [PY, "-m", "lab.replay"], meta={"turns": len(replay.SENTENCES), "turn": 0, "text": "", "who": replay.WHO})
+    job.episode = events.start_episode("replay", turns=len(replay.SENTENCES))
+    return job
+
+
+_TURN = re.compile(r"^\[replay\] (\d+)/(\d+) → (.*)$")
+
+
+def _translate_replay(job: Job, line: str) -> None:
+    m = _TURN.match(line.strip())
+    if m:
+        job.meta["turn"], job.meta["text"] = int(m.group(1)), m.group(3).strip("'\"")[:80]
+        events.emit("replay_turn", n=int(m.group(1)), of=int(m.group(2)), text=job.meta["text"])
+    elif line.strip().startswith("[replay] nothing listening") or "— stopping" in line:
+        events.emit("error", message=line.strip()[9:])
+
+
+def _finish_replay(job: Job) -> None:
+    """The summary is the receipt lab/progress.py computes for this session: turns,
+    compactions, budget_plan overwritten, the order."""
+    from lab import progress                                       # noqa: PLC0415 — progress imports jobs' siblings
+    rows = [w for w in state.STATE.get("wakes", []) if w.get("who") == job.meta.get("who") and w.get("ts", 0) >= job.started]
+    r = progress.replay_receipt(rows).get("after") or {}
+    job.summary = {k: r.get(k) for k in ("session_id", "turns", "compactions", "compaction_at", "overwritten", "order", "lit")}
+
+
+BUILDERS = {"wake": _wake, "seed": _seed, "replay": _replay}
+FINISHERS = {"wake": _finish_wake, "seed": _finish_seed, "replay": _finish_replay}
+TRANSLATE = {"wake": _translate_clock, "replay": _translate_replay}
 
 
 def views() -> dict:

@@ -57,7 +57,16 @@ prices, work out which sections fit and what the total is. Show the numbers.
 
 You have no conversation history and do not need any. Everything you need is in
 the request.
+
+You have no tools. Never call one; write the arithmetic out as text.
 """,
+    # The last line of that instruction is this lab's, not the source's. ADK appends an
+    # agent's own description to its system prompt ("The description about you is: Works out
+    # ticket costs. Call this for ANY question…"), and gemini-2.5-flash obeys "Call this" by
+    # emitting a function call to a tool that does not exist. The API then answers
+    # UNEXPECTED_TOOL_CALL with no text, so output_key never writes budget_plan — 3 of 3 runs
+    # without the line, 3 of 3 answer in text with it. The description stays as shipped: it is
+    # what the main agent reads when deciding to call this.
     output_key="budget_plan",
 )
 

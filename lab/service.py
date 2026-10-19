@@ -9,7 +9,7 @@
                           with no session id it answers the stage's parked run (V, VI) or opens a wake-… session
     /api/session/new      POST: a fresh stage session id (nothing is deleted)
     /api/code             GET / POST: the in-page editor (two files, syntax-checked)
-    /api/job              POST {kind} / GET ?kind= / DELETE ?kind=: wake · seed
+    /api/job              POST {kind} / GET ?kind= / DELETE ?kind=: wake · seed · replay
     /api/venue/{action}   POST: the world buttons — reset · advance-queue · sellout · hang-once · clock
     /api/venue/state      GET: what the venue panel polls
     /api/kill             POST: the process ends on purpose; lab.sh brings it back (boot_id changes)

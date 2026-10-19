@@ -1,6 +1,6 @@
 "use client";
-import { useState } from "react";
-import { readCode, sourceUrl, startJob, writeCode, type Progress, type Wake } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { getJob, readCode, sourceUrl, startJob, writeCode, type Job, type Progress, type Wake } from "@/lib/api";
 import type { Folded } from "@/lib/useEvents";
 import { ART, CHAPTERS, type Chapter as C, type Step } from "@/lib/chapters";
 import Editor from "./Editor";
@@ -33,7 +33,7 @@ function Transcript({ p }: { p: Progress | null }) {
         <div key={w.ts + w.session_id} className="turn">
           {w.source === "clock"
             ? <div className="bubble"><Av src={ART.av.clock} /><div><div className="who">the clock · 3:00 · {w.session_id}{w.answered ? ` · answers the pause ${String(w.answered).slice(0, 12)}` : ""}</div><div className="txt">{w.message}</div></div></div>
-            : <div className="bubble you"><Av src={ART.av.sleeper} /><div><div className="who">{w.who || "you"}</div><div className="txt">{w.message}</div></div></div>}
+            : <div className="bubble you"><Av src={ART.av.sleeper} /><div><div className="who">{w.who === "replay" ? "you · typed by ▶ the replay" : (w.who || "you")}</div><div className="txt">{w.message}</div></div></div>}
           <div className="bubble"><Av src={ART.av.rook} /><div>
             <div className="who">{w.kind === "Workflow" ? "the graph" : "the agent"}{w.kind === "Workflow" && (w.nodes || []).length ? ` · ran ${(w.nodes || []).map((x) => x.node).filter((x, i, a) => a.indexOf(x) === i).join(" → ")}` : ""}{(w.turn_tools ?? w.tools).length ? ` · called ${(w.turn_tools ?? w.tools).join(" · ")}` : w.kind === "Workflow" ? "" : " · no tool call"}{w.orders_new.length ? ` · bought ${w.orders_new.map((o) => `${o.seats}× ${o.section} ${(o.weekday || "").slice(0, 3)}`).join(", ")}` : ""}{w.awaiting && w.turn_interrupts?.length ? ` · parked on ${String(w.turn_interrupts.slice(-1)[0]).slice(0, 14)}` : ""}{w.boot_id && p?.boot_id && w.boot_id !== p.boot_id ? ` · boot ${w.boot_id}` : ""}</div>
             <div className={"txt" + (w.awaiting ? " ask" : "")}>{w.reply || (w.awaiting ? "(the run stopped on a question)" : "(no text)")}</div>
@@ -63,7 +63,18 @@ export default function Chapter({ n, p, f, busy, onGo, onChanged, onCheck, onWor
   const editIsNow = Boolean(step && step.act === "edit");
   const [seeding, setSeeding] = useState(false);
   const seed = async () => { setSeeding(true); try { await startJob("seed"); } catch (e) { alert((e as Error).message); } setTimeout(() => { setSeeding(false); onChanged(); }, 4000); };
-  const wait = busy || f.running;
+  /** ▶ the longer conversation (chapter II): the replay job, polled while it runs */
+  const hasReplay = c.steps.some((s) => s.act === "replay");
+  const [replay, setReplay] = useState<Job | null>(null);
+  const replayPrev = useRef("idle");
+  useEffect(() => {
+    if (!hasReplay) return;
+    const poll = async () => { try { const j = await getJob("replay"); setReplay(j); if (replayPrev.current === "running" && j.state !== "running") onChanged(); replayPrev.current = j.state; } catch { /* away */ } };
+    poll(); const id = setInterval(poll, replay?.state === "running" ? 1500 : 6000); return () => clearInterval(id);
+  }, [hasReplay, replay?.state, onChanged]);
+  const replayRunning = replay?.state === "running";
+  const fireReplay = async () => { try { await startJob("replay"); } catch (e) { alert((e as Error).message); } try { setReplay(await getJob("replay")); } catch { /* away */ } };
+  const wait = busy || f.running || replayRunning;
   const [applying, setApplying] = useState(false);
   const editDone = isEditDone(c, p);
   /** "apply the edit for me": the same transform the editor and scripts/walk.py use, written through /api/code */
@@ -93,10 +104,13 @@ export default function Chapter({ n, p, f, busy, onGo, onChanged, onCheck, onWor
       case "sell": return <div className="act"><button className="btn big" disabled={wait} onClick={() => onWorld("sellout", { section: "A" })}>1 · sell the good seats</button><button className="btn big" disabled={wait} onClick={() => onWorld("advance-queue")}>2 · skip the wait</button></div>;
       case "wb": return <div className="act"><button className="btn big" onClick={onWorkbench}>🔬 open the workbench →</button>{n === 2 && <button className="copy" disabled={seeding} onClick={seed}>{seeding ? "seeding…" : "▶ seed the two-days-ago session"}</button>}</div>;
       case "phone": return <div className="act"><button className="btn sun big" onClick={onCheck}>📱 the breakfast message →</button></div>;
-      default: return s.say ? <div className="act">{sayBtn(s)}</div> : null;
+      case "replay": return <div className="act"><button className="btn sun big" disabled={wait} onClick={fireReplay}>{replayRunning ? `▶ replaying · turn ${Number(replay?.meta?.turn || 0)} of ${Number(replay?.meta?.turns || 8)}` : "▶ a longer conversation →"}</button><span className="dim" style={{ fontSize: 12.5 }}>{replayRunning ? `“${String(replay?.meta?.text || "")}” — watch the stage` : "eight sentences, a new conversation, about a minute · hands off"}</span></div>;
+      default: return s.say ? <div className="act">{sayBtn(s)}{s.optional && s.skip === "wake" && !done && <button className="btn" disabled={wait} onClick={onWake} title="skip the optional sentence — the clock is the step that tears the stub">or skip · 🐓 wake it at 3am →</button>}</div> : null;
     }
   };
   const firstTile = tiles[0];
+  /** a torn stub with an optional step still open (chapter II's ▶): it rides inside the lit card */
+  const extra: Step | null = done && !shown && now.n <= c.steps.length && c.steps[now.n - 1]?.optional ? c.steps[now.n - 1] : null;
 
   return (
     <div className="card panel">
@@ -111,6 +125,14 @@ export default function Chapter({ n, p, f, busy, onGo, onChanged, onCheck, onWor
           <div className="k"><span>stub {c.roman} torn</span><span>{c.steps.length} of {c.steps.length}</span></div>
           <div className="do">✓ {c.done}</div>
           {tiles.length > 0 && <div className="tiles">{tiles.slice(0, 3).map((t, i) => <div key={i} className="tile"><div className="k">{t.k}</div><div className={"v " + (t.cls || "")}>{t.v}</div>{t.s && <div className="s">{t.s}</div>}</div>)}</div>}
+          {extra && (
+            <div className="extra">
+              <div className="k"><span>one more · optional</span><span>step {now.n} of {c.steps.length}</span></div>
+              <div className="do" dangerouslySetInnerHTML={{ __html: extra.do }} />
+              {action(extra)}
+              {extra.see && <div className="see"><span className="arrow">← then watch the stage</span> · {extra.see}</div>}
+            </div>
+          )}
           <div className="act">
             {n === CHAPTERS.length
               ? <button className="btn sun big" onClick={onCheck}>📱 the breakfast message →</button>
@@ -120,7 +142,7 @@ export default function Chapter({ n, p, f, busy, onGo, onChanged, onCheck, onWor
         </div>
       ) : step && (
         <div className={"nowcard" + (shown ? " peek" : "")}>
-          <div className="k"><span>{shown ? (done ? "do it again" : "ahead") : "do this"}</span><span>step {shown || now.n} of {c.steps.length}{shown && <> · <a role="button" onClick={() => setPeek(null)}>{done ? "close ↩" : "back to now ↩"}</a></>}</span></div>
+          <div className="k"><span>{shown ? (done ? "do it again" : "ahead") : step.optional ? "do this · optional" : "do this"}</span><span>step {shown || now.n} of {c.steps.length}{shown && <> · <a role="button" onClick={() => setPeek(null)}>{done ? "close ↩" : "back to now ↩"}</a></>}</span></div>
           <div className="do" dangerouslySetInnerHTML={{ __html: step.do }} />
           {!shown && now.note && <div className="note">{now.note}</div>}
           {action(step)}
@@ -130,12 +152,12 @@ export default function Chapter({ n, p, f, busy, onGo, onChanged, onCheck, onWor
 
       <div className="ticks">
         <div className="k">watch · receipts, ticking on their own</div>
-        {(() => { let hinted = false; return ticks.map((t, i) => { const h = !t.ok && !hinted && t.hint; if (h) hinted = true;
+        {(() => { const need = ticks.some((t) => !t.ok && !t.opt); let hinted = false; return ticks.map((t, i) => { const h = !t.ok && !hinted && t.hint && !(need && t.opt); if (h) hinted = true;
           return <div key={i} className={"tk" + (t.ok ? " ok" : "")}><span className="dot">{t.ok ? "✓" : ""}</span><span className="l">{t.label}{h && <span className="h">{t.hint}</span>}</span></div>; }); })()}
       </div>
 
       <div className="track">
-        {c.steps.map((s, i) => { const k = i + 1; const st = done || k < now.n ? "done" : k === now.n ? "cur" : ""; return (
+        {c.steps.map((s, i) => { const k = i + 1; const st = k < now.n || (done && !s.optional) ? "done" : k === now.n ? "cur" : ""; return (
           <a key={i} className={"st " + st + (shown === k ? " peeking" : "")} role="button" title={s.do.replace(/<[^>]+>/g, "")} onClick={() => setPeek(k === now.n && !done ? null : k)}><span className="dot" /><span className="lbl">{s.lbl}</span></a>); })}
       </div>
 
@@ -150,7 +172,7 @@ export default function Chapter({ n, p, f, busy, onGo, onChanged, onCheck, onWor
         <Fold k="what it did" one={ok ? c.done : firstTile ? `${firstTile.k} · ${firstTile.v}` : "receipts"}>
           {tiles.length > 0 && <div className="tiles">{tiles.map((t, i) => <div key={i} className="tile"><div className="k">{t.k}</div><div className={"v " + (t.cls || "")}>{t.v}</div>{t.s && <div className="s">{t.s}</div>}</div>)}</div>}
           {places && places.length > 0 && (
-            <div className="tile" style={{ marginTop: 8 }}><div className="k">where it lives · read from lab.db, artifacts/ and the file</div>
+            <div className="tile" style={{ marginTop: 8 }}><div className="k">where it lives · {c.placesFrom ? `${c.placesFrom(p)} · ` : ""}read from lab.db, artifacts/ and the file</div>
               <div className="chips">{places.map((pl, i) => <div key={i} className="chip"><span className={pl.c}>{pl.c === "y" ? "✓" : pl.c === "n" ? "✗" : "–"}</span><span><b>{pl.k}</b> · {pl.s}</span></div>)}</div>
             </div>
           )}

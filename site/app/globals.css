@@ -217,6 +217,8 @@ details.world .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; 
 .nowcard .act .editor { width: 100%; }
 .nowcard .see { font-size: 13.5px; line-height: 1.45; color: var(--sub); } .nowcard .see b { color: var(--ink); font-weight: 700; }
 .nowcard .tiles { margin-top: 2px; }
+.nowcard .extra { border-top: 1px dashed rgba(42,131,100,.35); padding-top: 12px; display: grid; gap: 10px; }
+.nowcard.lit .extra .k { color: var(--amber-ink); } .nowcard.lit .extra .see .arrow { color: var(--amber-ink); }
 .nowcard .act .btn.say { white-space: normal; text-align: left; line-height: 1.35; display: grid; gap: 2px; }
 .nowcard .act .btn.say small { font-family: var(--font-mono), monospace; font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; font-weight: 500; color: var(--amber-ink); }
 .nowcard .act .okline { font-size: 13.5px; color: var(--mint-ink); } .nowcard .act .okline b { color: var(--mint-ink); }
