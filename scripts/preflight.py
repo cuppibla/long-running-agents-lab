@@ -1,4 +1,4 @@
-"""Is this machine ready, and which stubs are torn?
+"""Is this machine ready, and which chapters are lit?
 
 Run it now, and again any time you want the answer to "where am I?" — every
 line is read from your files and the lab's receipts, never a checklist.
@@ -49,11 +49,11 @@ def chapters(p: dict) -> list[str]:
     rows = [
         (1, "I", "the clock", "", "say the plan · 🐓 wake it at 3am"),
         (2, "II", "where a fact lives", "recall is in" if code.get("recall") else "no recall yet", "delete one “# ” in agent/concert/agent.py · 🐓 again"),
-        (3, "III", "the kill", "queue tools in" if code.get("queue") else "no queue tool yet", "phase 2"),
-        (4, "IV", "old news", "fence armed" if code.get("fence") else "no fence yet", "phase 2"),
-        (5, "V", "the graph", "root is the graph" if code.get("graph") else "root is the agent", "phase 3"),
-        (6, "VI", "the budget", "agree_budget first" if code.get("budget") else "default budget", "phase 3"),
-        (7, "VII", "breakfast", "", "six stubs"),
+        (3, "III", "the kill", "queue tools in" if code.get("queue") else "no queue tool yet", "delete one “# ” · ask · 💀 kill · ask again"),
+        (4, "IV", "old news", "fence armed" if code.get("fence") else "no fence yet", "delete one “# ” · sell the good seats · buy A"),
+        (5, "V", "the graph", "root is the graph" if code.get("graph") else "root is the agent", "swap one line · “go” · 🐓 · skip · 🐓"),
+        (6, "VI", "the budget", "agree_budget first" if code.get("budget") else "default budget", "delete one “# ” · ask · answer · yes · 🐓"),
+        (7, "VII", "breakfast", "", "six chapters"),
     ]
     return [f"  {r:<4}{TICK if lit.get(str(n)) else BOX} {name:<20}{DIM}· {how:<22}{note}{OFF}"
             for n, r, name, how, note in rows]
@@ -84,10 +84,10 @@ def main() -> int:
 
     from lab import progress
     p = progress.read()
-    print("\n  the stubs:\n")
+    print("\n  the chapters:\n")
     for line in chapters(p):
         print(line)
-    print(f"\n  {DIM}a stub tears when something real proves it — a session the clock made, an order at the venue —"
+    print(f"\n  {DIM}a chapter lights when something real proves it — a session the clock made, an order at the venue —"
           f" not when the code reads right.{OFF}\n")
     return 0
 
