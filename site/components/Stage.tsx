@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getJob, startJob, type Job, type Progress, type Wake } from "@/lib/api";
 import type { Folded } from "@/lib/useEvents";
-import { ART, CHAPTERS, LINE } from "@/lib/chapters";
+import { ART, CHAPTERS } from "@/lib/chapters";
 
 /** The stage, v2: the scene (the cast doing this chapter's thing), the agent speaking
  *  from it (one bubble — its latest sentence and its state), three numbers, one talk
@@ -41,12 +41,7 @@ export default function Stage({ chapter, p, f, name, busy, awake, onSay, onWorld
   onSay: (text: string) => void; onWorld: (action: string, body?: Record<string, unknown>) => Promise<void>; onKill: () => void; onChanged: () => void; onNew: () => void;
 }) {
   const c = CHAPTERS[chapter - 1];
-  const now = c.now(p);
-  const cur = c.steps[Math.min(now.n, c.steps.length) - 1];
-  const prefill = (now.n <= c.steps.length && cur.say) || (c.steps.find((s) => s.say) || {}).say || LINE;
-  const [text, setText] = useState(prefill);
-  const lastDefault = useRef(prefill);
-  useEffect(() => { if (text === lastDefault.current || !text) setText(prefill); lastDefault.current = prefill; }, [prefill]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [text, setText] = useState("");
   const [wake, setWake] = useState<Job | null>(null);
   const wakePrev = useRef("idle");
   useEffect(() => {
@@ -87,20 +82,19 @@ export default function Stage({ chapter, p, f, name, busy, awake, onSay, onWorld
       </div>
 
       <div className="talk">
-        <input className="box" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !busy && text.trim()) onSay(text); }} placeholder="talk to it…" aria-label="talk to the agent" />
-        <button className="btn sun" disabled={busy || f.running} onClick={() => text.trim() && onSay(text)}>{busy ? "…" : "send"}</button>
+        <input className="box" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !busy && text.trim()) { onSay(text); setText(""); } }} placeholder="or say anything to it, in your own words…" aria-label="talk to the agent" />
+        <button className="btn" disabled={busy || f.running || !text.trim()} onClick={() => { if (text.trim()) { onSay(text); setText(""); } }}>{busy ? "…" : "send"}</button>
       </div>
       <div className="doors">
-        <button className={"btn sky" + (wakeRunning ? " on" : "")} id="wakebtn" disabled={wakeRunning || f.running} onClick={fire} title="monstertix/clock.py --in 10 → POST /api/wake · nobody is at the keyboard">
-          {wakeRunning ? (f.clock === "fired" ? "🐓 fired · the agent is running" : `🐓 armed · ${Math.max(0, 10 - Math.round(wake?.elapsed || 0))} s`) : "🐓 wake it at 3am"}
-        </button>
-        {chapter === 3 && <button className="btn kill" onClick={onKill} disabled={f.running || wakeRunning} title="the process really dies; lab.sh brings it back with a new boot id">💀 kill the process{p?.boots && p.boots > 1 ? ` · boot ${p.boots}` : ""}</button>}
-        <button className="more" onClick={onNew} title="a fresh session id — nothing is deleted; the old conversation stays in lab.db">↻ new conversation</button>
+        <span className="hint">{wakeRunning ? (f.clock === "fired" ? "🐓 fired · the agent is running" : `🐓 armed · fires in ${Math.max(0, 10 - Math.round(wake?.elapsed || 0))} s · hands off`) : "the yellow card on the right says what to do; this side shows what happened"}</span>
         <span className="sp" />
         <details className="world">
-          <summary className="more">the world ▾</summary>
+          <summary className="more">the switches ▾</summary>
           <div className="row">
-            <button className="btn" onClick={() => onWorld("reset")} title="the venue: every ticket, order and feed line gone; the tour re-seeded">reset</button>
+            <button className="more" onClick={onNew} title="a fresh session id — nothing is deleted; the old conversation stays in lab.db">↻ new conversation</button>
+            <button className="btn" id="wakebtn" disabled={wakeRunning || f.running} onClick={fire} title="monstertix/clock.py --in 10 → POST /api/wake · nobody is at the keyboard">🐓 wake it at 3am</button>
+            <button className="btn kill" onClick={onKill} disabled={f.running || wakeRunning} title="the process really dies; lab.sh brings it back with a new boot id">💀 kill the process{p?.boots && p.boots > 1 ? ` · boot ${p.boots}` : ""}</button>
+            <button className="btn" onClick={() => onWorld("reset")} title="the venue: every ticket, order and feed line gone; the tour re-seeded">reset the venue</button>
             <button className="btn" onClick={() => onWorld("advance-queue")} title="every waiting ticket straight to the front">skip the wait</button>
             <button className="btn" onClick={() => onWorld("sellout", { section: "A" })} title="section A sold out for both Amsterdam shows — the seat map the agent holds becomes a lie">sell the good seats</button>
             <button className="btn" onClick={() => onWorld("hang-once")} title="the next purchase commits, then fails its response — the platform retries">break the next purchase</button>

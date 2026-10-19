@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { sourceUrl, startJob, type Progress, type Wake } from "@/lib/api";
+import { readCode, sourceUrl, startJob, writeCode, type Progress, type Wake } from "@/lib/api";
 import type { Folded } from "@/lib/useEvents";
 import { ART, CHAPTERS, type Chapter as C, type Step } from "@/lib/chapters";
 import Editor from "./Editor";
@@ -12,16 +12,6 @@ import NightShift from "./NightShift";
  *  own, a hint on the first one not yet earned) · the track (every step, 2–4 words) · folds:
  *  why · the edit · the map · what it did · transcript · source. Explicit steps live where
  *  the gesture happens; the drawer keeps adk web's own numbered steps. */
-
-function Say({ text }: { text: string }) {
-  const [done, setDone] = useState(false);
-  return (
-    <span className="say">
-      <code>{text}</code>
-      <button className="copy" onClick={async () => { try { await navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 1200); } catch { /* blocked */ } }}>{done ? "copied ✓" : "copy"}</button>
-    </span>
-  );
-}
 
 function Fold({ k, one, open, children }: { k: string; one: React.ReactNode; open?: boolean; children: React.ReactNode }) {
   return (
@@ -54,36 +44,56 @@ function Transcript({ p }: { p: Progress | null }) {
   );
 }
 
-export default function Chapter({ n, p, f, onGo, onChanged, onCheck, onWorkbench, onWake, onWorld, onKill }: {
-  n: number; p: Progress | null; f: Folded; onGo: (n: number) => void; onChanged: () => void; onCheck: () => void; onWorkbench: () => void; onWake: () => void;
+export default function Chapter({ n, p, f, busy, onGo, onChanged, onCheck, onWorkbench, onWake, onWorld, onKill, onSay, onSayFresh }: {
+  n: number; p: Progress | null; f: Folded; busy: boolean; onGo: (n: number) => void; onChanged: () => void; onCheck: () => void; onWorkbench: () => void; onWake: () => void;
   onWorld: (action: string, body?: Record<string, unknown>) => Promise<void>; onKill: () => void;
+  onSay: (text: string) => Promise<void>; onSayFresh: (text: string) => Promise<void>;
 }) {
   const c: C = CHAPTERS[n - 1];
   const prev = CHAPTERS[n - 2], next = CHAPTERS[n];
   const ok = Boolean(p?.lit?.[String(n)]);
   const now = c.now(p);
   const done = ok || now.n > c.steps.length;           // a torn stub stays torn: the lit card wins over the file's state
-  const [peek, setPeek] = useState<number | null>(null);         // a step you clicked on the track, to read ahead
-  const shown = peek && peek !== now.n && !done ? peek : null;
+  const [peek, setPeek] = useState<number | null>(null);         // a step you clicked on the track: read it, or do it again
+  const shown = peek && (peek !== now.n || done) ? peek : null;
   const step: Step | null = shown ? c.steps[shown - 1] : done ? null : c.steps[now.n - 1];
   const tiles = c.tiles(p);
   const places = c.places?.(p);
   const ticks = c.ticks(p);
-  const editIsNow = Boolean(step && step.act === "edit" && !shown);
+  const editIsNow = Boolean(step && step.act === "edit");
   const [seeding, setSeeding] = useState(false);
   const seed = async () => { setSeeding(true); try { await startJob("seed"); } catch (e) { alert((e as Error).message); } setTimeout(() => { setSeeding(false); onChanged(); }, 4000); };
-  const busy = f.running;
-
+  const wait = busy || f.running;
+  const [applying, setApplying] = useState(false);
+  const editDone = isEditDone(c, p);
+  /** "apply the edit for me": the same transform the editor and scripts/walk.py use, written through /api/code */
+  const applyEdit = async () => {
+    if (!c.edit?.fix) return;
+    setApplying(true);
+    try { const f0 = await readCode(c.edit.file); const fixed = c.edit.fix(f0.content); if (fixed !== f0.content) await writeCode(c.edit.file, fixed); }
+    catch (e) { alert((e as Error).message); }
+    setApplying(false); onChanged();
+  };
+  const sayBtn = (s: Step) => (
+    <button className="btn sun big say" disabled={wait} onClick={() => (s.fresh ? onSayFresh : onSay)(s.say as string)} title={s.fresh ? "opens a new conversation, then says this" : "says this on the stage"}>
+      {s.fresh ? <small>↻ new conversation, then say</small> : <small>say</small>}“{s.say}” →
+    </button>
+  );
   const action = (s: Step) => {
     switch (s.act) {
-      case "edit": return c.edit ? <Editor path={c.edit.file} symbol={c.edit.symbol} marker={c.edit.marker} afterMarker={c.edit.afterMarker} fix={c.edit.fix} afterHint={c.edit.afterHint} change={c.edit.change} swap={c.edit.swap} onSaved={onChanged} /> : null;
-      case "wake": return <button className="btn sky big" disabled={busy} onClick={onWake}>🐓 wake it at 3am</button>;
-      case "skipwake": return <><button className="btn big" disabled={busy} onClick={() => onWorld("advance-queue")}>skip the wait</button><span className="dim">then</span><button className="btn sky big" disabled={busy} onClick={onWake}>🐓 wake it at 3am</button></>;
-      case "kill": return <button className="btn kill big" disabled={busy} onClick={onKill}>💀 kill the process</button>;
-      case "sell": return <><button className="btn big" disabled={busy} onClick={() => onWorld("sellout", { section: "A" })}>sell the good seats</button><span className="dim">then</span><button className="btn big" disabled={busy} onClick={() => onWorld("advance-queue")}>skip the wait</button></>;
-      case "wb": return <button className="btn big" onClick={onWorkbench}>🔬 open the workbench</button>;
-      case "phone": return <button className="btn sun big" onClick={onCheck}>📱 the breakfast message</button>;
-      default: return s.say ? <><Say text={s.say} /><span className="dim" style={{ fontSize: 12.5 }}>— it is already in the box on the stage</span></> : null;
+      case "edit": return c.edit ? <>
+        <div className="act">{editDone
+          ? <span className="okline">✓ the edit is in — <b>{c.edit.change[1]}</b> · {c.edit.afterHint || "lands on your next run"}</span>
+          : <><button className="btn sun big" disabled={applying} onClick={applyEdit}>{applying ? "applying…" : `${c.edit.swap ? "swap the line" : "delete the “# ”"} for me →`}</button><span className="dim" style={{ fontSize: 12.5 }}>or edit the red line yourself, below — it saves as you type</span></>}</div>
+        <Editor path={c.edit.file} symbol={c.edit.symbol} marker={c.edit.marker} afterMarker={c.edit.afterMarker} fix={c.edit.fix} afterHint={c.edit.afterHint} change={c.edit.change} swap={c.edit.swap} onSaved={onChanged} />
+      </> : null;
+      case "wake": return <div className="act"><button className="btn sun big" disabled={wait} onClick={onWake}>🐓 wake it at 3am →</button><span className="dim" style={{ fontSize: 12.5 }}>fires in 10 s · hands off the keyboard</span></div>;
+      case "skipwake": return <div className="act"><button className="btn big" disabled={wait} onClick={() => onWorld("advance-queue")}>1 · skip the wait</button><button className="btn sun big" disabled={wait} onClick={onWake}>2 · 🐓 wake it at 3am →</button></div>;
+      case "kill": return <div className="act"><button className="btn kill big" disabled={wait} onClick={onKill}>💀 kill the process →</button><span className="dim" style={{ fontSize: 12.5 }}>the lights go out; lab.sh brings it back</span></div>;
+      case "sell": return <div className="act"><button className="btn big" disabled={wait} onClick={() => onWorld("sellout", { section: "A" })}>1 · sell the good seats</button><button className="btn big" disabled={wait} onClick={() => onWorld("advance-queue")}>2 · skip the wait</button></div>;
+      case "wb": return <div className="act"><button className="btn big" onClick={onWorkbench}>🔬 open the workbench →</button>{n === 2 && <button className="copy" disabled={seeding} onClick={seed}>{seeding ? "seeding…" : "▶ seed the two-days-ago session"}</button>}</div>;
+      case "phone": return <div className="act"><button className="btn sun big" onClick={onCheck}>📱 the breakfast message →</button></div>;
+      default: return s.say ? <div className="act">{sayBtn(s)}</div> : null;
     }
   };
   const firstTile = tiles[0];
@@ -101,17 +111,20 @@ export default function Chapter({ n, p, f, onGo, onChanged, onCheck, onWorkbench
           <div className="k"><span>stub {c.roman} torn</span><span>{c.steps.length} of {c.steps.length}</span></div>
           <div className="do">✓ {c.done}</div>
           {tiles.length > 0 && <div className="tiles">{tiles.slice(0, 3).map((t, i) => <div key={i} className="tile"><div className="k">{t.k}</div><div className={"v " + (t.cls || "")}>{t.v}</div>{t.s && <div className="s">{t.s}</div>}</div>)}</div>}
-          {n === CHAPTERS.length
-            ? <div><button className="btn sun" onClick={onCheck}>📱 the breakfast message</button></div>
-            : <div className="see">next: <b>chapter {next.roman} · {next.name}</b> — {next.hook}</div>}
+          <div className="act">
+            {n === CHAPTERS.length
+              ? <button className="btn sun big" onClick={onCheck}>📱 the breakfast message →</button>
+              : <button className="btn sun big" onClick={() => onGo(next.n)}>chapter {next.roman} · {next.name} →</button>}
+            <button className="btn" onClick={() => setPeek(1)}>do it again</button>
+          </div>
         </div>
       ) : step && (
         <div className={"nowcard" + (shown ? " peek" : "")}>
-          <div className="k"><span>{shown ? `step ${shown} · ahead` : "now"}</span><span>{shown ? <a role="button" onClick={() => setPeek(null)}>back to now ↩</a> : `step ${now.n} of ${c.steps.length}`}</span></div>
+          <div className="k"><span>{shown ? (done ? "do it again" : "ahead") : "do this"}</span><span>step {shown || now.n} of {c.steps.length}{shown && <> · <a role="button" onClick={() => setPeek(null)}>{done ? "close ↩" : "back to now ↩"}</a></>}</span></div>
           <div className="do" dangerouslySetInnerHTML={{ __html: step.do }} />
           {!shown && now.note && <div className="note">{now.note}</div>}
-          {!shown && <div className="act">{action(step)}{n === 2 && step.act === "wb" && <button className="copy" disabled={seeding} onClick={seed}>{seeding ? "seeding…" : "▶ seed the two-days-ago session"}</button>}</div>}
-          {step.see && <div className="see">you will see · <b>{step.see}</b></div>}
+          {action(step)}
+          {step.see && <div className="see"><span className="arrow">← then watch the stage</span> · {step.see}</div>}
         </div>
       )}
 
@@ -123,7 +136,7 @@ export default function Chapter({ n, p, f, onGo, onChanged, onCheck, onWorkbench
 
       <div className="track">
         {c.steps.map((s, i) => { const k = i + 1; const st = done || k < now.n ? "done" : k === now.n ? "cur" : ""; return (
-          <a key={i} className={"st " + st + (shown === k ? " peeking" : "")} role="button" title={s.do.replace(/<[^>]+>/g, "")} onClick={() => setPeek(k === now.n ? null : k)}><span className="dot" /><span className="lbl">{s.lbl}</span></a>); })}
+          <a key={i} className={"st " + st + (shown === k ? " peeking" : "")} role="button" title={s.do.replace(/<[^>]+>/g, "")} onClick={() => setPeek(k === now.n && !done ? null : k)}><span className="dot" /><span className="lbl">{s.lbl}</span></a>); })}
       </div>
 
       <Fold k="why" one={c.why[0]}><div dangerouslySetInnerHTML={{ __html: c.why[1] }} /></Fold>

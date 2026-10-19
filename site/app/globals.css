@@ -217,6 +217,16 @@ details.world .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; 
 .nowcard .act .editor { width: 100%; }
 .nowcard .see { font-size: 13.5px; line-height: 1.45; color: var(--sub); } .nowcard .see b { color: var(--ink); font-weight: 700; }
 .nowcard .tiles { margin-top: 2px; }
+.nowcard .act .btn.say { white-space: normal; text-align: left; line-height: 1.35; display: grid; gap: 2px; }
+.nowcard .act .btn.say small { font-family: var(--font-mono), monospace; font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; font-weight: 500; color: var(--amber-ink); }
+.nowcard .act .okline { font-size: 13.5px; color: var(--mint-ink); } .nowcard .act .okline b { color: var(--mint-ink); }
+.nowcard .see .arrow { font-family: var(--font-mono), monospace; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--amber-ink); }
+.nowcard.lit .see .arrow { color: var(--mint-ink); }
+.doors .hint { font-size: 12.5px; color: var(--sub); line-height: 1.4; min-width: 0; }
+.howto { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 0 0 14px; padding: 10px 16px; border-radius: 14px; background: var(--amber-soft); border: 1px dashed rgba(169,110,12,.35); font-size: 13.5px; color: var(--ink); }
+.howto .k { font-family: var(--font-mono), monospace; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--amber-ink); }
+.howto b { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--amber); color: var(--ink); font-size: 11px; margin-right: 6px; }
+.howto .copy { margin-left: auto; }
 /* the ticks */
 .ticks { display: grid; gap: 4px; padding: 2px 4px 0; }
 .ticks .k { font-family: var(--font-mono), monospace; font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--faint); margin-bottom: 2px; }

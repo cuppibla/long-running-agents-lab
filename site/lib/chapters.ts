@@ -22,7 +22,7 @@ import type { Progress, Wake } from "./api";
 
 export type Where = "page" | "editor" | "workbench" | "watch";
 export type Act = "edit" | "wake" | "skipwake" | "kill" | "sell" | "wb" | "phone";
-export type Step = { lbl: string; where: Where; do: string; say?: string; act?: Act; see?: string };
+export type Step = { lbl: string; where: Where; do: string; say?: string; act?: Act; see?: string; fresh?: boolean };   // fresh: the button opens a new conversation first
 export type Edit = { file: string; symbol?: string; marker: string; afterMarker: string; change: [string, string]; fix?: (src: string) => string; afterHint?: string; swap?: boolean };
 export type Read = { k: string; v: string; s?: string; cls?: "" | "hi" | "ok" | "bad" };
 export type Tile = { k: string; v: string; cls?: "" | "hi" | "ok" | "bad"; s?: string };
@@ -123,7 +123,7 @@ export const CHAPTERS: Chapter[] = [
     why: ["instruction= is read when a message arrives, never between messages",
       "<code>instruction=</code> is a string handed to the model <b>when somebody sends a message</b>. Nothing reads it between turns. Being awake needs two halves: <b>the trigger</b> — an endpoint with a <code>Runner</code> behind it (here <code>/api/wake</code>) — and <b>the triggerer</b> — something with a clock that calls it. <code>monstertix/clock.py</code> is a <code>sleep</code> and a POST; in the finale it is Cloud Scheduler."],
     steps: [
-      { lbl: "say the plan", where: "page", do: "Say the plan to it, as you would to a person.", say: PLAN, see: "a reply — and then nothing, for a whole minute" },
+      { lbl: "say the plan", where: "page", do: "Say the plan to it, as you would to a person.", say: PLAN, fresh: true, see: "a reply — and then nothing, for a whole minute" },
       { lbl: "hands down · 🐓", where: "page", do: "Hands down for a minute — watch <b>calls</b> stay at 0. Then press 🐓: the clock fires once, 10 s later, with nobody at the keyboard.", act: "wake", see: "one run with your hands off: it searches on its own and asks which show, into the dark" },
       { lbl: "adk web", where: "workbench", do: "Open 🔬 — the <code>wake-…</code> session is there, and you did not type it.", act: "wb", see: "the same session the stage showed, read from lab.db" },
     ],
@@ -193,7 +193,7 @@ export const CHAPTERS: Chapter[] = [
       "<code>join_queue</code> returns a <b>handle</b> to work that is not finished — a ticket and a position. Wrapped as a <code>LongRunningFunctionTool</code>, with <code>ResumabilityConfig</code> on the App, the run <b>parks</b> on that call: it says where it stands and stops — nothing loops, nothing holds a connection open. The ticket is in <b>session state</b>, and session state is in <code>lab.db</code>, not in the process. Kill the process. The next boot opens the same session; your next sentence is a new turn on it, and the agent checks the queue it is already in instead of joining again."],
     steps: [
       { lbl: "delete the “# ”", where: "editor", do: "Delete the “# ” — the agent gets <code>join_queue</code> (long-running) and <code>check_queue</code>.", act: "edit", see: "saved · lands on your next message" },
-      { lbl: "ask", where: "page", do: "Ask for the tickets — it joins the queue for the Saturday show and says the position.", say: LINE, see: "“Your position is 14,203”" },
+      { lbl: "ask", where: "page", do: "Ask for the tickets, in a new conversation — it joins the queue for the Saturday show and says the position.", say: LINE, fresh: true, see: "“Your position is 14,203”" },
       { lbl: "💀 kill", where: "page", do: "Press 💀 — the lights go out, the server really dies, and lab.sh brings it back as the next boot.", act: "kill", see: "a new boot id, a second later" },
       { lbl: "ask again", where: "page", do: "Ask where you are, in the same conversation.", say: WHERE_AM_I, see: "one check_queue call, the same ticket, a lower number — no second search, no second ticket" },
       { lbl: "adk web", where: "workbench", do: "The same session, after the reboot — the drawer shows the parked call and the one that followed.", act: "wb", see: "a conversation that does not know it was dead" },
@@ -232,8 +232,8 @@ export const CHAPTERS: Chapter[] = [
     why: ["a before_tool_callback re-reads the world; returning a dict short-circuits the tool",
       "An agent that is <i>missing</i> a fact asks. An agent holding an <i>old</i> fact just acts — nothing is missing from its context, the wrong thing is present. The seat map it read while waiting is still in the <b>conversation</b>; its <code>temp:seatmap</code> copy died with that turn, which does not help. A <code>before_tool_callback</code> runs in the instant before <code>purchase</code>: it re-reads live inventory, and <b>returning a dict short-circuits the tool</b>, so the stale plan never reaches the venue. (The <code>Idempotency-Key</code> on every purchase is already in the shipped code; BREAK THE NEXT PURCHASE shows the venue returning the same order twice.)"],
     steps: [
-      { lbl: "delete the “# ”", where: "editor", do: "Delete the “# ” — the fence runs before every purchase. (As shipped, the venue itself answers 409 — see it first if you like, then come back.)", act: "edit", see: "saved · lands on your next message" },
-      { lbl: "ask", where: "page", do: "↻ new conversation, then ask for the tickets — it joins the queue.", say: LINE, see: "“Your position is 14,203”" },
+      { lbl: "delete the “# ”", where: "editor", do: "Delete the “# ” — the fence runs before every purchase.", act: "edit", see: "saved · lands on your next message" },
+      { lbl: "ask", where: "page", do: "Ask for the tickets, in a new conversation — it joins the queue.", say: LINE, fresh: true, see: "“Your position is 14,203”" },
       { lbl: "the seats", where: "page", do: "Ask about the seats while it waits — A 400 · B 900 · C 1200 become sentences in the conversation.", say: SEATS, see: "a seat map, read into the conversation" },
       { lbl: "sell · skip", where: "page", do: "Press SELL THE GOOD SEATS, then SKIP THE WAIT.", act: "sell", see: "section A is gone; the conversation still says 400" },
       { lbl: "buy A", where: "page", do: "Tell it to buy from what it remembers.", say: BUY, see: "fence.py answers first: reason stale_plan, actually 0 — the venue was never called" },
@@ -276,9 +276,9 @@ export const CHAPTERS: Chapter[] = [
     why: ["a Workflow makes the rules nodes and keeps the model where judgement is",
       "Some steps have no judgement in them: take exactly one queue ticket, ask whether it is your turn, write the brief. A <b>Workflow</b> makes those <b>function nodes</b> (the same every night) and keeps <b>agent nodes</b> only where a decision lives (<code>pick_show</code>; your agent, last, when section A is gone). The wait is a node returning <code>RequestInput</code>: the run <b>parks</b>, the process may exit, and every wake-up re-enters the graph from <code>START</code> — <code>rerun_on_resume=False</code> on <code>pick_show</code> and <code>queue_up</code> is why it does not pick again or take a second ticket. On this page the clock’s door answers the parked run: a wake-up with no session named goes to the stage’s interrupt, not to a new session."],
     steps: [
-      { lbl: "go, as shipped", where: "page", do: "Say “go” to the conversation. Watch which tools the model picks — it chose that order.", say: GO, see: "a different order every time: recall, search, a question back — or it joins the queue" },
+      { lbl: "go, as shipped", where: "page", do: "Say “go” to the conversation, as shipped. Watch which tools the model picks — it chose that order.", say: GO, fresh: true, see: "a different order every time: recall, search, a question back — or it joins the queue" },
       { lbl: "swap the line", where: "editor", do: "Swap the one line — the root becomes the graph; your agent is its last node.", act: "edit", see: "saved · lands on your next message" },
-      { lbl: "go", where: "page", do: "↻ new conversation, then “go” — open → pick_show → queue_up → check_front run in order and park.", say: GO, see: "parked at #14,203 · one ticket at the venue" },
+      { lbl: "go", where: "page", do: "Say “go” again, in a new conversation — open → pick_show → queue_up → check_front run in order and park.", say: GO, fresh: true, see: "parked at #14,203 · one ticket at the venue" },
       { lbl: "🐓", where: "page", do: "Press 🐓 — the clock’s sentence answers the pause.", act: "wake", see: "only check_front runs · no model call · still one ticket · a lower number" },
       { lbl: "skip, 🐓", where: "page", do: "SKIP THE WAIT, then 🐓 once more — at the front: brief, then your agent buys.", act: "skipwake", see: "2× A · $420, inside the $250 a seat nightly.py names" },
       { lbl: "adk web", where: "workbench", do: "The graph view: nodes turn green; the <code>adk_request_input</code> event has its own answer box.", act: "wb", see: "edges with 2× badges, one ticket at the venue" },
@@ -322,7 +322,7 @@ export const CHAPTERS: Chapter[] = [
       "The same interrupt that waits for a venue can wait for a <b>person</b>. <code>agree_budget</code> returns a <code>RequestInput</code> aimed at you, reads your answer back, and stores <b>the sentence</b> — not a schema — in <b>session state</b> (no prefix: a limit agreed for this booking, not forever). Three things make it work: <code>rerun_on_resume=True</code>, a <b>stable</b> <code>interrupt_id</code> (<code>budget:ask</code>, <code>budget:confirm</code>), and reading the answer from <code>ctx.resume_inputs</code>. And <code>someone_is_there()</code> is a fact about the <b>request</b>: <code>/api/say</code> marks a person present for that request only; <code>/api/wake</code> does not, so at 3am the node takes the standing budget instead of stopping on a question nobody will answer."],
     steps: [
       { lbl: "delete the “# ”", where: "editor", do: "Delete the “# ” — <code>agree_budget</code> becomes the first node.", act: "edit", see: "saved · lands on your next message, in a new conversation" },
-      { lbl: "ask", where: "page", do: "↻ new conversation, then ask — the run stops before any tool runs and asks what you will spend.", say: ASK, see: "“Before I book anything: what are you willing to spend?”" },
+      { lbl: "ask", where: "page", do: "Ask for the tickets, in a new conversation — the run stops before any tool runs and asks what you will spend.", say: ASK, fresh: true, see: "“Before I book anything: what are you willing to spend?”" },
       { lbl: "answer", where: "page", do: "Answer the way people answer, in the same box — it reads your sentence back.", say: BUDGET_SENTENCE, see: "“So: … Have I got that right?”" },
       { lbl: "yes", where: "page", do: "Confirm — the sentence lands in session state and four nodes run off one “yes”.", say: YES, see: "parked at #14,203; the State tab holds budget, no prefix" },
       { lbl: "skip, 🐓", where: "page", do: "SKIP THE WAIT, then 🐓 — nobody is there, and it does not ask again.", act: "skipwake", see: "it buys inside your sentence: $210 a seat against “250 if they’re the good ones”" },

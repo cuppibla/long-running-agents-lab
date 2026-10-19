@@ -40,6 +40,7 @@ export default function LabPage() {
   const [toast, setToast] = useState("");
   const [nudge, setNudge] = useState("");
   const [still, setStill] = useState(false);
+  const [howto, setHowto] = useState(false);
   const f = useEvents();
   const bootSeen = useRef<string>("");
 
@@ -51,6 +52,7 @@ export default function LabPage() {
     try { setSid(localStorage.getItem(SID_KEY)); } catch { /* ignore */ }
     if (qs.get("console") === "1") setConsole(true);
     if (qs.get("still") === "1") setStill(true);
+    try { setHowto(qs.get("howto") === "1" || !localStorage.getItem("lra.howto")); } catch { setHowto(true); }
     if (qs.get("check") === "1") setCheck(true);
     const want = parseInt(qs.get("ch") || "", 10);
     try {
@@ -94,15 +96,21 @@ export default function LabPage() {
     setSid(s.session_id); try { localStorage.setItem(SID_KEY, s.session_id); } catch { /* ignore */ }
     return s.session_id;
   };
-  const onSay = async (text: string) => {
+  const sayWith = async (id: string, text: string) => {
     setBusy(true);
     try {
-      const id = await ensureSession();
       const r = await say(text, id, name || "you");
       if (!r.ok) setToast(String(r.error || "no reply"));
       else if (r.session_id && r.session_id !== id) { setSid(r.session_id); try { localStorage.setItem(SID_KEY, r.session_id); } catch { /* ignore */ } }
     } catch (e) { setToast((e as Error).message); }
     finally { setBusy(false); refresh(); }
+  };
+  const onSay = async (text: string) => sayWith(await ensureSession(), text);
+  /** a step that starts a new conversation: a fresh session id, then the sentence into it */
+  const onSayFresh = async (text: string) => {
+    const s = await newSession();
+    setSid(s.session_id); try { localStorage.setItem(SID_KEY, s.session_id); } catch { /* ignore */ }
+    await sayWith(s.session_id, text);
   };
   const onWorld = async (action: string, body: Record<string, unknown> = {}) => {
     try { await world(action, body); setToast(`the world · ${action}${body.section ? ` · section ${body.section}` : ""}${body.multiplier ? ` · ${body.multiplier}×` : ""}`); }
@@ -150,10 +158,19 @@ export default function LabPage() {
         </div>
       </div>
 
+      {howto && (
+        <div className="howto">
+          <span className="k">how this page works</span>
+          <span><b>1</b> the yellow card on the right says the one thing to do — press its button.</span>
+          <span><b>2</b> the stage on the left shows what the agent did.</span>
+          <span><b>3</b> when the receipt ticks, the next step appears. Seven chapters, in order.</span>
+          <button className="copy" onClick={() => { setHowto(false); try { localStorage.setItem("lra.howto", "seen"); } catch { /* ignore */ } }}>got it ✕</button>
+        </div>
+      )}
       <div className="main">
         <Stage chapter={chapter} p={p} f={f} name={name} busy={busy} awake={awake} onSay={onSay} onWorld={onWorld} onKill={onKill} onChanged={refresh} onNew={newConversation} />
         <div className="col">
-          <Chapter n={chapter} p={p} f={f} onGo={go} onChanged={refresh} onCheck={() => setCheck(true)} onWorkbench={() => openDrawer(true)} onWake={onWake} onWorld={onWorld} onKill={onKill} />
+          <Chapter n={chapter} p={p} f={f} busy={busy} onGo={go} onChanged={refresh} onCheck={() => setCheck(true)} onWorkbench={() => openDrawer(true)} onWake={onWake} onWorld={onWorld} onKill={onKill} onSay={onSay} onSayFresh={onSayFresh} />
         </div>
       </div>
 
