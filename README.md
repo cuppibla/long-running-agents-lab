@@ -1,24 +1,30 @@
 # Long-Running Agents
 
 **MonsterTix · ADK 2 on Google Cloud.** An agent that waits in line, survives
-being killed, and buys at 3am inside limits you set — six chapters on one page,
-with a real agent behind it. This is the interactive-lab form of the
+being killed, and buys at 3am inside limits you set — six chapters, one page
+each, with a real agent behind them. This is the interactive-lab form of the
 [MonsterTix workshop](https://github.com/gca-americas/monstertix) (Christina
 Lin's two-hour long-running-agents codelab): the venue, the handler, the clock
 and the agent package are vendored verbatim; every chapter's hands-on step is
 one gesture on the page, lit by a receipt the process produced.
 
-| chapter | the concept | what you do on the page | the receipt that tears the stub |
+| chapter | the concept | what you do on the page | the receipt that lights the chapter |
 |---|---|---|---|
 | I · the clock | `instruction=` is read only when a message arrives; a **trigger** (an endpoint + a `Runner`) and a **triggerer** (a clock) | say the plan, hands down, press 🐓 WAKE IT AT 3AM | a `wake-…` session the clock created, with ≥ 1 tool call |
-| II · where a fact lives | `temp:` · session state · `user:` · a memory file; `recall()` through `BaseMemoryService`; compaction | delete one `# ` on `recall, remember,` · 🐓 again | a wake whose events include `recall` and whose order is the Saturday show |
+| II · where a fact lives | `temp:` · session state · `user:` · a memory file; `recall()` through `BaseMemoryService`; compaction | delete one `# ` on `recall, remember,` · 🐓 again · optional: say two sentences of your own, ▶ a longer conversation (eight turns, so compaction fires) | a wake whose events include `recall` and whose order is the Saturday show; the optional rows: `user:prefs`, an artifact, a compaction event, `budget_plan` overwritten, 8× C for the Saturday |
 | III · the kill | `LongRunningFunctionTool` returns a handle; `ResumabilityConfig` lets the run park on it; the ticket is in session state, in `lab.db` | delete one `# ` · ask for tickets · 💀 KILL · "Where am I in line?" | one `queue_ticket`, handed out by `join_queue` under one boot id and read back by `check_queue` under another — and one ticket at the venue |
 | IV · old news | `before_tool_callback` re-reads the world; returning a dict short-circuits the tool | delete one `# ` · ask · ask about the seats · SELL THE GOOD SEATS · SKIP · "Buy the two section A seats." · "Then section C" | fence.py's `stale_plan` refusal, no 409 from the venue in that turn, an order in another section |
 | V · the graph | `Workflow`: rules as function nodes, judgement as agent nodes; `RequestInput` parks; `rerun_on_resume` | "go" as shipped (a chat turn) · swap `root_agent = buyer_agent` → `nightly` · "go" · 🐓 · SKIP · 🐓 | one session of the graph parked on an `adk_request_input`, two clock wake-ups that answered it (the clock's door routes to the stage's parked run), one ticket at the venue at every park, one order |
 | VI · the budget | the same interrupt aimed at a person; a stable `interrupt_id`; `ctx.resume_inputs`; `someone_is_there()` per request | delete one `# ` on `NIGHT.insert(0, agree_budget)` · ask · answer in your words · "Yes" · SKIP · 🐓 | `budget:ask` and `budget:confirm` answered, `budget` in session state == a sentence you typed, an order, and a clock wake-up in that session that asked nothing |
-| VII · breakfast | the laptop → cloud diff, read only | read the phone | six stubs |
+| VII · breakfast | the laptop → cloud diff, read only | read the phone | six chapters |
 
-*A stub tears from a receipt, never from a checklist.*
+*A chapter lights from a receipt, never from a checklist.*
+
+The page is eight routes — `/lab/story · clock · memory · kill · news · graph ·
+budget · breakfast` — in the VibeStudio Haunted Edition language: a scene on
+top, the concept said term-first, the stage (the live agent), your edit, a load
+check, RUN IT (one card per step), VERIFY (the receipts). Keyboard ← → move
+between chapters.
 
 ## Run it
 
@@ -58,18 +64,21 @@ lab/                    the service package (this lab's own code)
   runner.py             the trigger: /api/say (attended) and /api/wake (unattended) through handlers.wake; the clock's
                         door answers the stage's parked run (V, VI); the graph's node lines are captured; receipts
   venue_mount.py        the venue on its own loopback port in a thread (sync tools would block one loop)
-  jobs.py               subprocess jobs: wake (clock.py --in 10) · seed; `[clock]` lines → events
-  progress.py           which stub is torn: a code fact paired with a receipt, per chapter
+  jobs.py               subprocess jobs: wake (clock.py --in 10) · seed · replay; `[clock]` / `[replay]` lines → events
+  replay.py             ▶ a longer conversation: the source lab's eight step-5 sentences through /api/say, one session
+  progress.py           which chapter is lit: a code fact paired with a receipt, per chapter (+ the replay's receipt)
   codefile.py           the editor's back end: two files, symbol-scoped, syntax-checked writes
   workbench.py          adk web via get_fast_api_app(url_prefix="/workbench") + forget()
   events.py             the append-only event log · SSE (/api/events) + once (/api/log)
   state.py              receipts (runs/state.json) + boots (runs/boots.json) + BOOT_ID
   env.py                Vertex-vs-key, the venue's port, the clock's target — settled once
-site/                   Next 15 static export (output:"export", trailingSlash)
-  lib/chapters.ts       the seven chapters — hook · concept · steps · edit · run · reads · tiles · next · wbGuide
-  components/           Cover · Rail (stubs) · Stage · NightShift · Chapter · Editor · Workbench · Console · Breakfast
+site/                   Next 15 static export (output:"export", trailingSlash); one route per chapter (app/lab/[slug])
+  lib/chapters.ts       the seven chapters' data — steps · edit · now(p) · ticks · nums · tiles · places · wbGuide (numbers measured on gemini-2.5-flash)
+  lib/pages.ts          the eight pages' copy — a term title, the concept, the stage, the edit, run it, verify
+  components/           Shell · TopNav (the roadmap) · StoryPage · ChapterPage · StageCard · EditCard · Editor · LoadCheck · RunCard ·
+                        VerifyCard · BreakfastPage · Figures (the graph and one figure per chapter) · Console · LabProvider · Ambience
 scripts/
-  walk.py               the headless learner: I–VI on the real model, --restore puts every "# " back
+  walk.py               the headless learner: I–VI on the real model (chapter II includes the replay; --skip-replay, --replay), --restore puts every "# " back
   preflight.py          one real model call + "where am I"
   capture.sh            shoots the page in headless Chrome (?still=1)
 lab.sh                  refuses to start unconfigured · builds the site once · keep-open loop around ONE uvicorn
@@ -86,20 +95,20 @@ POST /api/wake {message?}        the clock's door: the same handler, unattended;
 POST /api/session/new            a fresh stage session id
 GET  /api/session?id=            what lab.db holds for one session (calls, state, compactions)
 GET/POST /api/code               the editor (agent/concert/agent.py · nightly.py); POST evicts the workbench's agent
-POST /api/job {kind} · GET ?kind= · DELETE ?kind=     wake · seed
+POST /api/job {kind} · GET ?kind= · DELETE ?kind=     wake · seed · replay
 POST /api/venue/{action}         reset · advance-queue · sellout · hang-once · clock   (the world buttons)
 GET  /api/venue/state            what the venue panel polls
 POST /api/kill                   exit 3; lab.sh restarts; boot_id changes
 GET  /api/source?path=           plain-text read; rejects .., .env, .db, .pyc, /.adk/, __pycache__
 /workbench                       adk web (runtime-config.json served with an ABSOLUTE backendUrl)
 /venue                           the venue, mounted for the page and its panel
-/                                site/out, mounted last
+/lab/<slug>/                     the page, one route per chapter (site/out, mounted last); /lab/?ch=N redirects
 ```
 
 ## Verify
 
 ```bash
-uv run python scripts/walk.py --base http://127.0.0.1:3490 --all      # I–VI on the real model (~7 min)
+uv run python scripts/walk.py --base http://127.0.0.1:3490 --all      # I–VI on the real model (~4–10 min, the model's pace)
 uv run python scripts/walk.py --base http://127.0.0.1:3490 --only 5   # one chapter
 uv run python scripts/walk.py --base http://127.0.0.1:3490 --restore  # puts every "# " back and root_agent = buyer_agent, resets the venue, re-seeds memory; git status clean
 LAB_URL=http://127.0.0.1:3490 bash scripts/capture.sh runs/shots      # the shots
