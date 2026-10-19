@@ -8,7 +8,7 @@ import { CHAPTERS, CLOSING } from "@/lib/chapters";
  *  Every number is a receipt; an untorn stub shows a dash. */
 export default function Breakfast({ p, name }: { p: Progress | null; name: string }) {
   const lit = p?.lit || {};
-  const clock = p?.after || p?.last_wake;
+  const clock = p?.before || p?.last_wake;      // row I is the clock's own run (the one without recall), not chapter II's
   const before = p?.before;
   const after = p?.after;
   const o = after?.orders_new?.[0];
