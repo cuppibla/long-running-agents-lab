@@ -30,7 +30,7 @@ export default function LoadCheck({ p, onChanged }: { p: Progress | null; onChan
       <div className="runrow">
         <div>
           <Kicker>Before you run</Kicker>
-          <p className="blurb" style={{ marginTop: 4 }}>Save the edit, then click the button. It reads both files back the way the editor saved them and says whether Python still parses them, and which lines are in. adk web imports the file on its next run.</p>
+          <p className="blurb" style={{ marginTop: 4 }}>Save, then check the agent still loads.</p>
         </div>
         <button className="btn" onClick={run} disabled={busy}>{busy ? "checking…" : "↻ Check the agent loads"}</button>
       </div>

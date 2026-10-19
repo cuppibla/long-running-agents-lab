@@ -8,15 +8,18 @@ import { useLab } from "./LabProvider";
 import { Av, Copy, Kicker } from "./shared";
 
 /** THE STAGE: MonsterTix, the page the agent is behind. Four readouts (this chapter's three
- *  numbers and what the agent is doing), the talk thread from receipts (the owl is the clock,
- *  the cat is you, the fox is the agent), this chapter's sentences as buttons (click says it on
+ *  numbers and what the agent is doing), the last exchange from receipts (the owl is the clock,
+ *  the cat is you, the fox is the agent) with the earlier turns folded under "earlier · N turns"
+ *  and the latest reply clamped to four lines, this chapter's sentences as buttons (click says it on
  *  the stage — opening a new conversation first when the step says so — ⧉ copies it), a free
  *  talk box, ↻ new conversation, and the world buttons folded as “the switches”. */
 export default function StageCard({ page, c }: { page: Page; c: Chapter }) {
   const lab = useLab();
   const { p, f, name, busy, wait } = lab;
   const [text, setText] = useState("");
+  const [full, setFull] = useState(false);                     // the latest reply, unclamped
   const thread: Wake[] = (p?.thread || []).slice(-4);
+  const older = thread.slice(0, -1), latest = thread.slice(-1); // the stage shows the last exchange; the earlier turns fold
   const last = (p?.thread || []).slice(-1)[0] || null;
   const running = f.running && (f.kind === "stage" || f.kind === "clock");
   const plate = running
@@ -26,6 +29,18 @@ export default function StageCard({ page, c }: { page: Page; c: Chapter }) {
   const sentences = c.steps.filter((s) => s.say);
   const sixty = (p?.venue?.clock || 1) >= 60;
   const send = () => { if (text.trim() && !wait) { lab.say(text.trim()); setText(""); } };
+  const exchange = (w: Wake, isLatest: boolean) => (
+    <div key={w.ts + w.session_id} className={isLatest ? "latest" + (full ? " open" : "") : undefined} style={{ display: "grid", gap: 10 }}>
+            {w.source === "clock"
+              ? <div className="bub"><Av who="owl" /><div><div className="who">the clock · 3:00 · {w.session_id}{w.answered ? ` · answers the pause ${String(w.answered).slice(0, 12)}` : ""}</div><div className="t">{w.message}</div></div></div>
+              : <div className="bub"><Av who="cat" /><div><div className="who">{w.who === "replay" ? "you · typed by ▶ the replay" : (w.who || name || "you")}</div><div className="t you">{w.message}</div></div></div>}
+            <div className="bub"><Av who="fox" /><div>
+              <div className="who">{w.kind === "Workflow" ? "the graph" : "the agent"}{w.kind === "Workflow" && (w.nodes || []).length ? ` · ran ${(w.nodes || []).map((x) => x.node).filter((x, i, a) => a.indexOf(x) === i).join(" → ")}` : ""}{(w.turn_tools ?? w.tools).length ? ` · called ${(w.turn_tools ?? w.tools).join(" · ")}` : w.kind === "Workflow" ? "" : " · no tool call"}{w.orders_new.length ? ` · bought ${w.orders_new.map((o) => `${o.seats}× ${o.section} ${(o.weekday || "").slice(0, 3)}`).join(", ")}` : ""}{w.awaiting && w.turn_interrupts?.length ? ` · parked on ${String(w.turn_interrupts.slice(-1)[0]).slice(0, 14)}` : ""}{w.boot_id && p?.boot_id && w.boot_id !== p.boot_id ? ` · boot ${w.boot_id}` : ""}</div>
+              <div className={"t" + (w.awaiting ? " ask" : "")}>{w.reply || (w.awaiting ? "(the run stopped on a question)" : "(no text)")}</div>
+              {isLatest && (w.reply || "").split("\n").length + Math.floor((w.reply || "").length / 110) > 4 && <button className="more" onClick={() => setFull(!full)}>{full ? "less ▴" : "the whole reply ▾"}</button>}
+            </div></div>
+    </div>
+  );
   return (
     <section className="card">
       <Kicker>The stage</Kicker>
@@ -36,17 +51,12 @@ export default function StageCard({ page, c }: { page: Page; c: Chapter }) {
       </div>
       <div className="thread">
         {!thread.length && !running && <div className="bub"><Av who="fox" /><div><div className="who">the agent</div><div className="t muted">Nobody has spoken yet. Say a sentence below, or press 🐓 and say nothing.</div></div></div>}
-        {thread.map((w) => (
-          <div key={w.ts + w.session_id} style={{ display: "grid", gap: 10 }}>
-            {w.source === "clock"
-              ? <div className="bub"><Av who="owl" /><div><div className="who">the clock · 3:00 · {w.session_id}{w.answered ? ` · answers the pause ${String(w.answered).slice(0, 12)}` : ""}</div><div className="t">{w.message}</div></div></div>
-              : <div className="bub"><Av who="cat" /><div><div className="who">{w.who === "replay" ? "you · typed by ▶ the replay" : (w.who || name || "you")}</div><div className="t you">{w.message}</div></div></div>}
-            <div className="bub"><Av who="fox" /><div>
-              <div className="who">{w.kind === "Workflow" ? "the graph" : "the agent"}{w.kind === "Workflow" && (w.nodes || []).length ? ` · ran ${(w.nodes || []).map((x) => x.node).filter((x, i, a) => a.indexOf(x) === i).join(" → ")}` : ""}{(w.turn_tools ?? w.tools).length ? ` · called ${(w.turn_tools ?? w.tools).join(" · ")}` : w.kind === "Workflow" ? "" : " · no tool call"}{w.orders_new.length ? ` · bought ${w.orders_new.map((o) => `${o.seats}× ${o.section} ${(o.weekday || "").slice(0, 3)}`).join(", ")}` : ""}{w.awaiting && w.turn_interrupts?.length ? ` · parked on ${String(w.turn_interrupts.slice(-1)[0]).slice(0, 14)}` : ""}{w.boot_id && p?.boot_id && w.boot_id !== p.boot_id ? ` · boot ${w.boot_id}` : ""}</div>
-              <div className={"t" + (w.awaiting ? " ask" : "")}>{w.reply || (w.awaiting ? "(the run stopped on a question)" : "(no text)")}</div>
-            </div></div>
-          </div>
-        ))}
+        {older.length > 0 && (
+          <details className="older"><summary>▸ earlier · {older.length} {older.length === 1 ? "turn" : "turns"}</summary>
+            {older.map((w) => exchange(w, false))}
+          </details>
+        )}
+        {latest.map((w) => exchange(w, true))}
         {running && <div className="bub"><Av who="fox" /><div><div className="who">{plate.who} · running{f.calledSoFar.length ? ` · ${f.calledSoFar.join(" · ")}` : ""}</div><div className="t muted">…</div></div></div>}
         {f.error && !running && <div className="bub"><Av who="fox" /><div><div className="who">error</div><div className="t err">{f.error}</div></div></div>}
       </div>

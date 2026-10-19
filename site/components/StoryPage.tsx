@@ -12,12 +12,12 @@ import { Html, In, Kicker } from "./shared";
 const SIX = ["wake up without anyone typing", "remember who is coming and what they cannot stand", "take a place in the queue and keep it through a crash", "re-read the seat map before spending", "decide the order of things, every time the same", "spend inside a limit a person agreed"];
 const INPUTS = ["Tell it the show, in your own words.", "Say what you will spend, when it asks. Confirm once.", "Sleep. Read the message over breakfast."];
 const LEARN = [
-  "An <code>instruction=</code> is read on invocation and never between turns: the trigger (a Runner behind an endpoint) and the triggerer (something with a clock).",
-  "Four places a fact can live — <code>temp:</code>, session state, <code>user:</code>, a memory file — and the paraphrase compaction writes over your conversation.",
-  "<code>LongRunningFunctionTool</code> + <code>ResumabilityConfig</code>: a handle to unfinished work, and what actually survives a kill (the session, not a resumed invocation).",
-  "<code>before_tool_callback</code>: re-read the world in the instant before spending; returning a dict short-circuits the tool.",
-  "<code>Workflow</code>: functions for rules, agents for judgement, <code>RequestInput</code> to park, <code>rerun_on_resume</code> so a wake-up walks but does not redo.",
-  "The same interrupt aimed at a person: a stable id, the sentence in state, and <code>someone_is_there()</code> as a fact about the request.",
+  "A prompt cannot start itself: a <b>trigger</b> (a Runner behind an endpoint) and a <b>triggerer</b> (a clock).",
+  "Four places a fact can live, and the <b>paraphrase</b> compaction writes over the conversation.",
+  "<code>LongRunningFunctionTool</code>: a handle to unfinished work; the <b>session</b> is what survives a kill.",
+  "<code>before_tool_callback</code>: re-read the world before spending; a returned dict skips the tool.",
+  "<code>Workflow</code>: functions for rules, agents for judgement, <code>RequestInput</code> to park.",
+  "The same interrupt aimed at a <b>person</b>; <code>someone_is_there()</code> is a fact about the request.",
 ];
 const CHIPS: [string, string][] = [["the clock · I", C.amber], ["facts · II", C.purple], ["survival · III", C.red], ["the fence · IV", C.blue], ["the graph · V", C.purple], ["the budget · VI", C.amber]];
 
@@ -33,7 +33,7 @@ export default function StoryPage() {
       <In d={1}><section className="card"><Kicker>Every night, the same six things</Kicker>
         <div className="two" style={{ marginTop: 8 }}>
           <ol className="list">{SIX.map((t, i) => <li key={t}><span className="n">0{i + 1}</span><span><i>{t}</i></span></li>)}</ol>
-          <div><p className="blurb" style={{ marginTop: 0 }}>A chat assistant lives inside one turn: seconds long, purely reactive. It cannot wait forty minutes, and it cannot act on its own. <b>A long-running agent</b> needs four things a chat assistant does not: a clock of its own, facts that outlive the conversation, survival across process death, and bounded authority. Each chapter removes one reason not to leave it alone at 3am.</p>
+          <div><p className="blurb" style={{ marginTop: 0 }}>A chat assistant lives inside one turn. <b>A long-running agent</b> needs a clock of its own, facts that outlive the conversation, survival across a kill, and a limit — each chapter adds one.</p>
             <div className="chips">{CHIPS.map(([l, col]) => <span key={l} className="chip" style={{ "--c": col } as React.CSSProperties}>{l}</span>)}</div>
             <Html as="p" className="ethics" html={SHOW.ethics} /></div>
         </div></section></In>
@@ -46,7 +46,7 @@ export default function StoryPage() {
         <section className="card"><Kicker>What you learn, in six chapters</Kicker>
           <ul className="bullets">{LEARN.map((t) => <li key={t} dangerouslySetInnerHTML={{ __html: t }} />)}</ul></section>
       </div></In>
-      <In d={4}><section className="statement"><p>This agent is <b>a run that can stop and start again</b>. In six chapters you give it a clock, a memory, a survivable pause, a fence around the money, a fixed order of things, and a limit you agreed. The last page is the message it leaves you over breakfast.</p>
+      <In d={4}><section className="statement"><p>This agent is <b>a run that can stop and start again</b>. Six chapters give it a clock, a memory, a pause that survives, a fence, a fixed order, and a limit you agreed.</p>
         <div className="arc">
           <div className="box" style={{ "--c": "var(--fg-muted)" } as React.CSSProperties}>chapters I to VI<small>you build the night shift</small></div><span className="arrow">→</span>
           <div className="box" style={{ "--c": C.purple } as React.CSSProperties}>chapter VII<small>the breakfast message · what it did</small></div><span className="arrow">→</span>
