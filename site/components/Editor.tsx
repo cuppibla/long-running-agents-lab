@@ -2,12 +2,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { readCode, sourceUrl, writeCode, type CodeFile } from "@/lib/api";
 
-/** One file (or one top-level symbol of it), in the page. The page never
- *  holds a copy of your code: it shows the file, saves it back through
- *  /api/code (syntax-checked), and says when the save takes effect. The
- *  marker line is highlighted until the edit is in; afterwards the edited
- *  line stays highlighted (afterMarker). "Stuck? apply the edit for me" runs
- *  `fix` over the file and saves. Copied from Table for N / Agent Valley. */
+/** One file (or one top-level symbol of it), in the page. The page never holds a copy of your
+ *  code: it shows the file, saves it back through /api/code (syntax-checked), and says when the
+ *  save takes effect. The marker line is highlighted until the edit is in; afterwards the edited
+ *  line stays highlighted green (afterMarker). The card's "Write the answer" button runs `fix`
+ *  through the same route. Shape: the reference's CodeEditor; logic: Table for N / Agent Valley. */
 
 type SaveState = "saved" | "unsaved" | "saving" | "invalid";
 
@@ -34,6 +33,8 @@ export default function Editor({ path, symbol, readOnly, marker, afterMarker, fi
 
   useEffect(() => { load(); }, [load]);
 
+  // other things write this file too (the answer button, walk.py, a terminal): take the file as it
+  // is now unless there are unsaved edits here, in which case say so and let the person choose
   useEffect(() => {
     const poll = async () => {
       try {
@@ -46,7 +47,8 @@ export default function Editor({ path, symbol, readOnly, marker, afterMarker, fi
     };
     const id = setInterval(poll, 4000);
     window.addEventListener("focus", poll);
-    return () => { clearInterval(id); window.removeEventListener("focus", poll); };
+    window.addEventListener("lra:sync", poll);
+    return () => { clearInterval(id); window.removeEventListener("focus", poll); window.removeEventListener("lra:sync", poll); };
   }, [path, symbol]);
 
   const save = async (content: string) => {
@@ -58,20 +60,10 @@ export default function Editor({ path, symbol, readOnly, marker, afterMarker, fi
       else setState("invalid");
     } catch (e) { setErr((e as Error).message); setState("invalid"); }
   };
-
   const onChange = (v: string) => {
     setCode(v); known.current.code = v; setState("unsaved");
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => save(v), 700);
-  };
-
-  const applyFix = () => {
-    if (!fix) return;
-    const fixed = fix(code);
-    if (fixed === code) return;
-    setCode(fixed); known.current.code = fixed;
-    if (timer.current) clearTimeout(timer.current);
-    save(fixed);
   };
 
   const lines = code.split("\n");
@@ -80,30 +72,30 @@ export default function Editor({ path, symbol, readOnly, marker, afterMarker, fi
   const editedLine = isDone && afterMarker ? lines.findIndex((l) => l.includes(afterMarker) && !l.trimStart().startsWith("#")) + 1 : 0;
   const markerIsComment = markerLine > 0 && lines[markerLine - 1].trimStart().startsWith("#");
   const verb = swap ? "swap" : markerIsComment ? "delete the “# ” on" : "edit";
-  const chip = readOnly ? <span className="pill read">read only</span>
-    : state === "saved" && savedHere && file?.validation.valid ? <span className="pill mint">saved · {afterHint || "lands on your next run"}</span>
-    : state === "saved" ? <span className="pill read">as on disk</span>
-    : state === "invalid" ? <span className="pill hot">not saved · {file?.validation.message || err}</span>
-    : state === "saving" ? <span className="pill read">saving…</span>
-    : <span className="pill read">unsaved</span>;
+  const first = file?.span ? file.span[0] : 1;
+  const status = readOnly ? "read only"
+    : state === "saved" && savedHere && file?.validation.valid ? `✓ saved · ${afterHint || "lands on your next run"}`
+    : state === "saved" ? "as on disk"
+    : state === "invalid" ? `not saved · ${file?.validation.message || err}`
+    : state === "saving" ? "saving…" : "unsaved";
 
   return (
-    <div className={"editor" + (path.endsWith(".txt") || path.endsWith(".md") ? " wrap" : "")}>
-      <div className="bar">
+    <div className="editor">
+      <div className="eh">
         <span><b>{path}</b>{symbol ? <> · {symbol}</> : null}{file?.span ? <span className="dim"> · lines {file.span[0]}–{file.span[1]}</span> : null}
-          {markerLine > 0 && !readOnly && <span className="mark-note"> · {verb} line {file?.span ? file.span[0] + markerLine - 1 : markerLine}</span>}
-          {editedLine > 0 && <span className="ok-note"> · line {file?.span ? file.span[0] + editedLine - 1 : editedLine} edited</span>}</span>
-        <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {markerLine > 0 && !readOnly && <span className="mark-note"> · {verb} line {first + markerLine - 1}</span>}
+          {editedLine > 0 && <span className="ok-note"> · line {first + editedLine - 1} edited</span>}</span>
+        <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <a className="src" href={sourceUrl(path)} target="_blank" rel="noreferrer" title="the whole file, as it is on disk">whole file ↗</a>
           {onDisk !== null && (
-            <button className="pill gold" onClick={() => { known.current = { code: onDisk, original: onDisk }; setCode(onDisk); setOnDisk(null); setState("saved"); }}>
+            <button className="src" style={{ color: "var(--vibe-amber)", borderColor: "var(--vibe-amber)" }} onClick={() => { known.current = { code: onDisk, original: onDisk }; setCode(onDisk); setOnDisk(null); setState("saved"); }}>
               changed on disk · reload
             </button>
           )}
-          {chip}
+          <span className={state === "invalid" ? "mark-note" : savedHere && state === "saved" ? "ok-note" : ""}>{status}</span>
         </span>
       </div>
-      {err && !file ? <div className="ln" style={{ color: "var(--coral-ink)", padding: 12 }}>{err}</div> : (
+      {err && !file ? <div style={{ color: "var(--vibe-red)", padding: 12, fontFamily: "var(--font-mono)", fontSize: 11 }}>{err}</div> : (
         <div className="body">
           <pre aria-hidden>
             {lines.map((l, i) => {
@@ -111,20 +103,18 @@ export default function Editor({ path, symbol, readOnly, marker, afterMarker, fi
               const comment = t.startsWith("#");
               const target = Boolean(marker) && !isDone && !readOnly && l.includes(marker as string);
               const edited = editedLine > 0 && i + 1 === editedLine;
-              const cls = target ? "mark" : edited ? "mark ok" : comment ? (t.startsWith("# 👉") ? "cmt" : "cm") : "";
-              return <div key={i} className={"ln " + cls}><i>{(file?.span ? file.span[0] : 1) + i}</i><span>{l || " "}</span>{target && <em>← the one line</em>}{edited && <em>← edited · saved</em>}</div>;
+              const cls = target ? "hl" : edited ? "hl ok" : comment ? (t.startsWith("# 👉") ? "cmt" : "cm") : "";
+              return <div key={i} className={"ln " + cls}><i>{first + i}</i><span>{l || " "}</span>{target && <em>← the one line</em>}{edited && <em>← edited · saved</em>}</div>;
             })}
           </pre>
-          <textarea value={code} onChange={(e) => onChange(e.target.value)} readOnly={readOnly} spellCheck={false}
+          <textarea value={code} onChange={(e) => onChange(e.target.value)} readOnly={readOnly} spellCheck={false} wrap="off"
             rows={lines.length} aria-label={`${path}${symbol ? " · " + symbol : ""}`} />
         </div>
       )}
       {change && <div className="wasnow"><span className="k">was</span><span className="was">{change[0]}</span><span className="k">now</span><span className="now">{change[1]}</span></div>}
       {fix && !readOnly && (
         <div className="efoot">
-          {isDone
-            ? <span className="ok-note">✓ the edit is in · {afterHint || "it lands on your next run"}</span>
-            : <><span>edit the one line, or</span><span><button className="copy" onClick={applyFix}>apply the edit for me</button></span></>}
+          {isDone ? <span className="ok-note">✓ the edit is in · {afterHint || "it lands on your next run"}</span> : <span>edit the one line here — it saves as you type — or press Hint, then Write the answer</span>}
         </div>
       )}
     </div>

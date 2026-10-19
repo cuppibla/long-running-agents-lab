@@ -59,9 +59,10 @@ export const SHOW = {
   ethics: "Ticket bots are a real problem and real ticketing sites prohibit automation. This runs against a <b>mock venue in this same process</b>, buying <b>one</b> allotment for <b>yourself</b>, inside limits you set.",
   agent: "the agent", minutes: "~60 min",
 };
+/** the cast: Agent Valley's familiars — the fox is the agent, the cat is you, the owl is the clock */
 export const ART = {
-  cover: "/art/rook-hero.jpg", hero: "/art/hero.jpg",
-  av: { rook: "/art/rook.jpg", sleeper: "/art/sleeper.jpg", clock: "/art/clock.jpg", boxoffice: "/art/boxoffice.jpg", sam: "/art/sam.jpg" },
+  cover: "/art/haunted/hero.jpg", hero: "/art/haunted/hero.jpg",
+  av: { rook: "/art/haunted/fox.png", sleeper: "/art/haunted/cat.png", clock: "/art/haunted/owl.png", boxoffice: "/art/haunted/maren.png", sam: "/art/haunted/bunny.png" },
 };
 /** the one sentence the clock sends, all lab long — lab/env.py has the same string */
 export const LINE = "The presale just opened. Get us tickets to the Amsterdam show.";
@@ -130,7 +131,7 @@ const turnWith = (ws: Wake[], t: string) => ws.filter((w) => calledIn(w, t)).sli
 
 export const CHAPTERS: Chapter[] = [
   { n: 1, roman: "I", name: "the clock", pill: ["read", "PRESS ONE"], phase: 1, scene: "clock",
-    star: { img: "/art/lamb.jpg", name: "the cloud", role: "wakes it at 3am" },
+    star: { img: "/art/haunted/deer.png", name: "the cloud", role: "wakes it at 3am" },
     hook: "You told it to buy the moment the presale opens. Nothing happened. Why?",
     why: ["instruction= is read when a message arrives, never between messages",
       "<code>instruction=</code> is a string handed to the model <b>when somebody sends a message</b>. Nothing reads it between turns. Being awake needs two halves: <b>the trigger</b> — an endpoint with a <code>Runner</code> behind it (here <code>/api/wake</code>) — and <b>the triggerer</b> — something with a clock that calls it. <code>monstertix/clock.py</code> is a <code>sleep</code> and a POST; in the finale it is Cloud Scheduler. The model never runs your code: a ⚡ <code>search_events</code> row means the model <i>asked</i> for that call and ADK ran the function. And no wording gets around it — “set a timer for 10:00”, “check every five minutes”, “act autonomously without waiting for input” all fail the same way: an instruction cannot invoke the function it is written inside."],
@@ -162,7 +163,7 @@ export const CHAPTERS: Chapter[] = [
     wbGuide: (p) => { const w = clockI(p); return { steps: [`Sessions (left rail): find <b>${w ? w.session_id : "wake-…"}</b> — the clock made it, not you`, "open its events: ⚡ search_events → ⚡ get_seatmap → ⚡ purchase (or whatever it chose — the stage lists the same names)", "nothing in it was typed by a person"], see: "the same session the stage showed, read from lab.db — which is what tears stub I." }; } },
 
   { n: 2, roman: "II", name: "where a fact lives", pill: ["edit", "EDIT ONE"], phase: 1, scene: "memory",
-    star: { img: "/art/sleeper.jpg", name: "you", role: "said it last week" },
+    star: { img: "/art/haunted/cat.png", name: "you", role: "said it last week" },
     hook: "It asked you which show — at 3am, into the dark. Sam can’t do weeknights. You said so last week. Where did that go?",
     why: ["four places a fact can live; recall() reads the one that survives the database",
       "A fact can live in four places, and each lasts a different time: <code>temp:</code> (one invocation, stripped on the way to disk) · <b>session state</b> (this booking) · <code>user:</code> (every session this person has) · a <b>memory file</b> (survives deleting the database). <code>recall()</code> reads that file through ADK’s <code>BaseMemoryService</code>. The conversation itself is the worst place: every three turns ADK replaces it with a <b>paraphrase</b> you never wrote — <code>EventsCompactionConfig(compaction_interval=3, overlap_size=1)</code> on the App, one more event row in lab.db under <code>actions.compaction</code>. Nothing kept in state is touched by it: <code>user:prefs</code>, and <code>budget_plan</code> (the arithmetic agent’s <code>output_key</code> — its latest answer replaces the one before), come back exactly as they went in."],
@@ -227,7 +228,7 @@ export const CHAPTERS: Chapter[] = [
       ...(r ? [`session <b>${r.session_id}</b> (▶ the longer conversation): ${r.compactions} grey summary block${r.compactions === 1 ? "" : "s"} where turns 1–3${r.compactions > 1 ? " and 3–6" : ""} used to be; <b>State</b> tab: <code>budget_plan</code> is the ${r.overwritten ? "10-person plan — the 4-person one is gone" : "arithmetic agent’s answer"}`] : [])], see: "three kinds of key side by side — plain, user:, and the one that is missing — and the paraphrase sitting where turns 1–3 used to be." }; } },
 
   { n: 3, roman: "III", name: "the kill", pill: ["edit", "EDIT ONE"], phase: 2, scene: "kill",
-    star: { img: "/art/capy.jpg", name: "the dispatcher", role: "keeps your place in line" },
+    star: { img: "/art/haunted/nix.png", name: "the dispatcher", role: "keeps your place in line" },
     hook: "The queue is 14,203 long. Your laptop will sleep before it reaches the front. What survives?",
     why: ["a long-running tool returns a handle; the ticket lives in lab.db, not in the process",
       "<code>join_queue</code> returns a <b>handle</b> to work that is not finished — a ticket and a position. Wrapped as a <code>LongRunningFunctionTool</code>, with <code>ResumabilityConfig</code> on the App, the run <b>parks</b> on that call: it says where it stands and stops — nothing loops, nothing holds a connection open. The ticket is in <b>session state</b>, and session state is in <code>lab.db</code>, not in the process. Kill the process. The next boot opens the same session; your next sentence is a new turn on it, and the agent checks the queue it is already in instead of joining again. Why <code>join_queue</code> and not <code>check_queue</code>: both return in milliseconds. <code>join_queue</code> hands back a handle to work that is <i>not finished</i> — a ticket, forty minutes still ahead; <code>check_queue</code> is a complete question with a complete answer, nothing pending to park on. Wrap that one as long-running and the run would park every time it asked where it was — including when the answer is “at the front, buy now”."],
@@ -267,7 +268,7 @@ export const CHAPTERS: Chapter[] = [
     wbGuide: (p) => { const sid = p?.kill?.session_id || lastJoined(p)?.session_id || p?.stage?.session_id; return { steps: [`Sessions: <b>${sid || "web-…"}</b> is still here after the reboot — adk web reads the same lab.db`, "open the ⚡ <b>join_queue</b> event: its response is <code>status: waiting</code> and the ticket — a handle, not a result; the <b>State</b> tab holds <code>queue_ticket</code>", "the next ⚡ is <b>check_queue</b>, after the kill, on the same ticket — a new turn, no second join_queue"], see: "a conversation that does not know it was dead." }; } },
 
   { n: 4, roman: "IV", name: "old news", pill: ["edit", "EDIT ONE"], phase: 2, scene: "stale",
-    star: { img: "/art/boxoffice-hero.jpg", name: "the box office", role: "stamps the same order once" },
+    star: { img: "/art/haunted/maren.png", name: "the box office", role: "stamps the same order once" },
     hook: "It came back from the wait holding a seat map. Those seats sold twelve minutes in. Why did it buy anyway?",
     why: ["a before_tool_callback re-reads the world; returning a dict short-circuits the tool",
       "An agent that is <i>missing</i> a fact asks. An agent holding an <i>old</i> fact just acts — nothing is missing from its context, the wrong thing is present. The seat map it read while waiting is still in the <b>conversation</b>; its <code>temp:seatmap</code> copy died with that turn, which does not help. A <code>before_tool_callback</code> runs in the instant before <code>purchase</code>: it re-reads live inventory, and <b>returning a dict short-circuits the tool</b>, so the stale plan never reaches the venue. (The <code>Idempotency-Key</code> on every purchase is already in the shipped code; BREAK THE NEXT PURCHASE shows the venue returning the same order twice.)"],
@@ -311,7 +312,7 @@ export const CHAPTERS: Chapter[] = [
     wbGuide: (p) => ({ steps: [`open <b>${p?.fence?.after?.session_id || "your session"}</b> and find the ⚡ <b>purchase</b> event for section A`, "its response reads <code>reason: stale_plan · actually_available: 0</code> — a dict returned by the callback. The venue’s feed shows <i>calling purchase</i> with no order behind it", "the next ⚡ <b>purchase</b> (section C) carries the venue’s own answer: an order id"], see: "the attempt, the refusal written by your code, and the purchase that passed — in a row." }) },
 
   { n: 5, roman: "V", name: "the graph", pill: ["edit", "SWAP ONE"], phase: 3, scene: "graph",
-    star: { img: "/art/rook.jpg", name: "the agent", role: "the last node of the graph" },
+    star: { img: "/art/haunted/fox.png", name: "the agent", role: "the last node of the graph" },
     hook: "At 3am, who decides the order of things? The model — nearly every time.",
     why: ["a Workflow makes the rules nodes and keeps the model where judgement is",
       "Some steps have no judgement in them: take exactly one queue ticket, ask whether it is your turn, write the brief. A <b>Workflow</b> makes those <b>function nodes</b> (the same every night) and keeps <b>agent nodes</b> only where a decision lives (<code>pick_show</code>; your agent, last, when section A is gone). The wait is a node returning <code>RequestInput</code>: the run <b>parks</b>, the process may exit, and every wake-up re-enters the graph from <code>START</code> — <code>rerun_on_resume=False</code> on <code>pick_show</code> and <code>queue_up</code> is why it does not pick again or take a second ticket. On this page the clock’s door answers the parked run: a wake-up with no session named goes to the stage’s interrupt, not to a new session. One more rule of the graph: an agent node cannot be first. It responds to its input, and straight after <code>START</code> with no user message there is nothing to respond to — the run hangs with no error. <code>open_the_night</code> exists to say the sentence a person would have said."],
@@ -356,7 +357,7 @@ export const CHAPTERS: Chapter[] = [
     wbGuide: (p) => { const sid = p?.graph?.after?.session_id || p?.stage?.session_id; return { steps: ["reload the drawer — the dropdown still says <b>concert</b>, but the left panel now draws a <b>graph</b>", `Sessions: open <b>${sid || "your session"}</b> — open_the_night → pick_show → queue_up → check_front are green and the run stopped`, "the last event is ⚡ <b>adk_request_input</b> with an <b>Enter your response…</b> box of its own. ⚠ That box answers the pause; the chat box at the bottom starts a NEW run and takes a second ticket. (The stage’s talk box and the clock’s door already answer the pause for you.)", "after 🐓: the edges into pick_show, queue_up and check_front carry a 2× / 3× badge — walked again, not run again"], see: "a graph parked on one interrupt, edges counted per wake-up, and one queue ticket at the venue — rerun_on_resume=False doing real work." }; } },
 
   { n: 6, roman: "VI", name: "the budget", pill: ["edit", "EDIT ONE"], phase: 3, scene: "budget",
-    star: { img: "/art/sam-hero.jpg", name: "Sam", role: "the second ticket · inside what you said" },
+    star: { img: "/art/haunted/bunny.png", name: "Sam", role: "the second ticket · inside what you said" },
     hook: "It can buy on its own now. Who said how much? Chapter V spent “up to $250 per seat” — a string in nightly.py that nobody agreed to.",
     why: ["the same interrupt, aimed at a person; the sentence goes into session state",
       "The same interrupt that waits for a venue can wait for a <b>person</b>. <code>agree_budget</code> returns a <code>RequestInput</code> aimed at you, reads your answer back, and stores <b>the sentence</b> — not a schema — in <b>session state</b> (no prefix: a limit agreed for this booking, not forever). Three things make it work: <code>rerun_on_resume=True</code>, a <b>stable</b> <code>interrupt_id</code> (<code>budget:ask</code>, <code>budget:confirm</code>), and reading the answer from <code>ctx.resume_inputs</code>. And <code>someone_is_there()</code> is a fact about the <b>request</b>: <code>/api/say</code> marks a person present for that request only; <code>/api/wake</code> does not, so at 3am the node takes the standing budget instead of stopping on a question nobody will answer."],
@@ -404,7 +405,7 @@ export const CHAPTERS: Chapter[] = [
     wbGuide: (p) => { const sid = p?.budget?.after?.session_id || p?.stage?.session_id; return { steps: [`Sessions: open <b>${sid || "your session"}</b> — the first event is ⚡ <b>adk_request_input</b> with id <code>budget:ask</code>, before any tool`, "the next ⚡ adk_request_input is <code>budget:confirm</code> — the read-back. Both were answered from the stage’s box; in adk web you would answer in <b>each event’s own box</b>, never the chat box", "<b>State</b> tab: <code>budget</code> — your sentence, no prefix; <code>request</code> — everything you typed, joined", "<b>New Session</b> (top left), type the ask again: the graph stops on budget:ask once more — the budget died with the conversation it was agreed in"], see: "a limit in a person’s own words, living exactly as long as the conversation — and asked for again the moment there is a new one." }; } },
 
   { n: 7, roman: "VII", name: "breakfast", pill: ["gold", "THE MESSAGE"], phase: 3, scene: "breakfast",
-    star: { img: "/art/clock-hero.jpg", name: "the clock", role: "7:30 · wake up" },
+    star: { img: "/art/haunted/owl.png", name: "the clock", role: "7:30 · wake up" },
     hook: "Six stubs. What did it do while you slept?",
     why: ["every stub is a receipt; two URIs and one env var separate this page from production",
       "Every stub on this page is torn by a <b>receipt</b>: a session the clock made, a recall call, one ticket under two boots, a refusal written by your code, one ticket under two wake-ups, a sentence in state. The page never ticks a checklist. The agent, its tools, its callbacks and the budget are what you would deploy — two URIs and one environment variable change, and nothing else does."],

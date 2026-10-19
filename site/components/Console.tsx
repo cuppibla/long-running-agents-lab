@@ -2,19 +2,19 @@
 import type { Progress } from "@/lib/api";
 import type { Folded } from "@/lib/useEvents";
 
-/** 🧾 the console: one event stream — the runner, the clock, the venue, the
- *  fence — the engineer's projection of the same log the stage draws from.
- *  `?console=1` opens the page on it (capture.sh shoots it). */
+/** 🧾 the console: one event stream — the runner, the clock, the venue, the fence — the
+ *  engineer's projection of the same log the stage draws from. Folds under RUN IT;
+ *  `?console=1` opens it (capture.sh shoots it). */
 export default function Console({ f, p }: { f: Folded; p: Progress | null }) {
   const rows = f.log.slice(-60);
   const t0 = rows.length ? rows[0].t : 0;
   const src = (e: Record<string, unknown>) =>
     e.type === "clock_fired" || e.type === "clock_armed" || e.type === "clock_done" ? "clock"
-    : e.type === "world" || e.type === "venue" ? "venue"
+    : e.type === "world" || e.type === "venue" || e.type === "venue_409" ? "venue"
     : e.type === "file_saved" || e.type === "session_new" || e.type === "kill" || e.type === "boot" ? "page"
-    : e.type === "fence_refused" ? "fence" : e.type === "venue_409" ? "venue"
+    : e.type === "fence_refused" ? "fence"
     : e.type === "node_line" ? "graph" : e.type === "interrupt_answered" || e.type === "run_parked" ? "server"
-    : (e.source as string) === "clock" ? "server" : (e.source as string) === "stage" ? "server" : "lab";
+    : (e.source as string) === "clock" || (e.source as string) === "stage" ? "server" : "lab";
   const text = (e: Record<string, unknown>) => {
     switch (e.type) {
       case "run_asked": return `woken${e.attended ? "" : " · nobody there"}${e.answers ? ` · answering ${String(e.answers).slice(0, 14)}` : ""} · "${String(e.text).slice(0, 90)}"`;
@@ -42,16 +42,16 @@ export default function Console({ f, p }: { f: Folded; p: Progress | null }) {
   };
   const venueFeed = (p?.venue?.activity || []).slice(0, 8);
   return (
-    <div className="card console">
-      <div className="eyebrow" style={{ marginBottom: 8 }}>🧾 console · one event stream: the runner, the clock, the venue · episode {f.episode} · {rows.length} events · boot {p?.boot_id}</div>
+    <div>
       <div className="lines">
+        {!rows.length && <div className="l"><span className="src">—</span><span className="dim">nothing yet · boot {p?.boot_id}</span></div>}
         {rows.filter((e) => text(e)).map((e) => <div key={`${e.i}-${e.t}`} className={"l " + src(e)}><span className="src">+{(e.t - t0).toFixed(1)}s [{src(e)}]</span><span>{text(e)}</span></div>)}
       </div>
       {venueFeed.length > 0 && (
-        <>
-          <div className="eyebrow" style={{ margin: "12px 0 6px" }}>the venue’s activity feed · newest first</div>
-          <div className="lines">{venueFeed.map((a) => <div key={a.ts + a.message} className="l venue"><span className="src">[{a.kind}]</span><span>{a.message}</span></div>)}</div>
-        </>
+        <div className="lines" style={{ marginTop: 8 }}>
+          <div className="l"><span className="src">venue</span><span className="dim">the venue’s activity feed · newest first</span></div>
+          {venueFeed.map((a) => <div key={a.ts + a.message} className="l venue"><span className="src">[{a.kind}]</span><span>{a.message}</span></div>)}
+        </div>
       )}
     </div>
   );

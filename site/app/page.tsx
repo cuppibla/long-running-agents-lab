@@ -1,6 +1,6 @@
-import Cover from "@/components/Cover";
+import LabPage from "@/components/LabPage";
 
-/** `/` — the cover. */
+/** `/` — chapter 0, the night (the same page as /lab/story/). */
 export default function Page() {
-  return <Cover />;
+  return <LabPage slug="story" />;
 }
