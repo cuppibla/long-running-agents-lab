@@ -51,18 +51,46 @@ if [ "$needs_build" = 1 ]; then
   (cd site && npm run build >/dev/null)
 fi
 
-echo
-echo "  ${NAME}      → http://localhost:${PORT}"
-echo "  the workbench           → http://localhost:${PORT}/workbench/dev-ui/?app=concert"
-echo "  the venue's panel       → http://localhost:${PORT}/venue/panel"
-echo
-
 # Ctrl+C: stop the child, then leave the loop. The 2 s graceful timeout matters:
 # the page holds an event stream open, and without it uvicorn waits for that
 # connection forever before exiting.
 cleanup() { pkill -P $$ 2>/dev/null || true; }
 trap 'cleanup; exit 0' INT TERM
 trap cleanup EXIT
+
+links() {
+  echo
+  echo "  ✓ the doors are open"
+  echo
+  echo "  ${NAME}      → http://localhost:${PORT}"
+  echo "  the workbench           → http://localhost:${PORT}/workbench/dev-ui/?app=concert"
+  echo "  the venue's panel       → http://localhost:${PORT}/venue/panel"
+  echo
+  echo "  In Cloud Shell: Web Preview → Change port → ${PORT}"
+  echo "  Ctrl+C closes the lab. (💀 in the page only restarts the process.)"
+  echo
+}
+
+# Print the links only once the port actually answers. Importing the lab (ADK,
+# adk web for the workbench, the venue) takes a while — in Cloud Shell up to a
+# minute — and a Web Preview tab opened before that says "Unable to forward
+# your request to a backend". Runs in the background so the keep-open loop
+# below stays exactly as it was; it gives up quietly if the process never
+# comes up, because uvicorn's own error is already on the screen by then.
+wait_then_links() {
+  for _ in $(seq 1 120); do
+    if .venv/bin/python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${PORT}/api/health', timeout=2)" 2>/dev/null; then
+      links
+      return 0
+    fi
+    sleep 1
+  done
+  echo "  ✗ the lab is still not answering on port ${PORT} after two minutes — read the error above." >&2
+}
+
+echo
+echo "  opening the doors — up to a minute the first time, do not open the page yet…"
+wait_then_links &
 
 # keep open: 💀 exits the process with code 3; a second later the lab is back
 # with a new boot id, reading lab.db from disk. Any other exit is a crash and is
