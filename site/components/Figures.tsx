@@ -166,7 +166,6 @@ export function BudgetFigure({ p }: { p: Progress | null }) {
         <Node x={276} y={60} w={168} h={36} label="state.budget" kind={KIND.store} lit={Boolean(b?.sentence)} />
         <Node x={276} y={114} w={168} h={30} label="→ open → pick → queue → ⏸" sub="" lit={Boolean(b?.order)} />
         <Edge m="arb" d="M250 60 C 263 60, 263 24, 276 24" lit={Boolean(b?.asked)} /><Edge m="arb" d="M250 70 H276" lit={Boolean(b?.sentence)} /><Edge m="arb" d="M250 80 C 263 80, 263 129, 276 129" lit={Boolean(b?.order)} />
-        <Sub x={130} y={146}>someone_is_there()</Sub>
       </svg>
     </div>
   );
