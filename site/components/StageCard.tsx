@@ -16,7 +16,7 @@ export default function StageCard({ page, c }: { page: Page; c: Chapter }) {
   const lab = useLab();
   const { p, f, name, busy, wait } = lab;
   const [text, setText] = useState("");
-  const thread: Wake[] = (p?.thread || []).slice(-6);
+  const thread: Wake[] = (p?.thread || []).slice(-4);
   const last = (p?.thread || []).slice(-1)[0] || null;
   const running = f.running && (f.kind === "stage" || f.kind === "clock");
   const plate = running

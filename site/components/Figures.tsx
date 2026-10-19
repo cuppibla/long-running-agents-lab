@@ -103,7 +103,7 @@ export function KillFigure({ p }: { p: Progress | null }) {
         <Node x={128} y={20} w={104} label="💀 kill" sub="exit 3 · restarts" kind={KIND.waits} lit={on} />
         <Node x={250} y={20} w={100} label="check_queue" sub={`function · boot ${k ? k.boots[1] : "b"}`} lit={on} />
         <Edge m="ark" d="M114 40 H128" /><Edge m="ark" d="M232 40 H250" />
-        <Node x={90} y={95} w={180} label={k ? `lab.db · queue_ticket ${k.ticket}` : "lab.db · queue_ticket"} sub={k ? `${k.positions[0] ? `#${k.positions[0].toLocaleString()}` : "—"} → ${k.positions[1] ? `#${k.positions[1].toLocaleString()}` : "—"}` : "written under a · read under b"} kind={KIND.store} lit={on} />
+        <Node x={90} y={95} w={180} label={k ? `queue_ticket ${k.ticket}` : "lab.db · queue_ticket"} sub={k ? `lab.db · ${k.positions[0] ? `#${k.positions[0].toLocaleString()}` : "—"} → ${k.positions[1] ? `#${k.positions[1].toLocaleString()}` : "—"}` : "written under a · read under b"} kind={KIND.store} lit={on} />
         <Edge m="ark" d="M60 60 V115 H90" lit={on} /><Edge m="ark" d="M270 115 H300 V60" lit={on} />
       </svg>
     </div>
