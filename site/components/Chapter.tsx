@@ -81,7 +81,8 @@ export default function Chapter({ n, p, f, busy, onGo, onChanged, onCheck, onWor
   const applyEdit = async () => {
     if (!c.edit?.fix) return;
     setApplying(true);
-    try { const f0 = await readCode(c.edit.file); const fixed = c.edit.fix(f0.content); if (fixed !== f0.content) await writeCode(c.edit.file, fixed); }
+    // symbol-scoped, like the editor: a whole-file replace would hit the docstring's copy of the line first
+    try { const f0 = await readCode(c.edit.file, c.edit.symbol); const fixed = c.edit.fix(f0.content); if (fixed !== f0.content) await writeCode(c.edit.file, fixed, c.edit.symbol); }
     catch (e) { alert((e as Error).message); }
     setApplying(false); onChanged();
   };
