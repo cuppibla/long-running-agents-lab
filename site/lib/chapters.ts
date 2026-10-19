@@ -178,9 +178,9 @@ export const CHAPTERS: Chapter[] = [
     sources: [["agent/concert/agent.py · the line", "agent/concert/agent.py"], ["agent/concert/memory.py · MarkdownMemoryService", "agent/concert/memory.py"], ["agent/concert/tools.py · note_companion · get_seatmap", "agent/concert/tools.py"], ["memory/userx.md", "memory/userx.md"], ["lab/replay.py · the longer conversation", "lab/replay.py"], ["lab/progress.py · what tears a stub", "lab/progress.py"]],
     done: "Saturday, for two, read from a file.",
     check: "a wake whose events include recall, and whose order is the Saturday show",
-    now: (p) => { if (!p?.code?.recall) return { n: 1 };
-      const r = p?.replay?.after;
-      if (p?.lit?.["2"]) return r?.done ? { n: 7 } : { n: 5 };
+    now: (p) => { const r = p?.replay?.after;
+      if (p?.lit?.["2"]) return r?.done ? { n: 7 } : { n: 5 };      // a torn stub stays torn, whatever the file says now — ▶ is still on offer
+      if (!p?.code?.recall) return { n: 1 };
       const s = stageSession(p); const w = lastClock(p);
       if (w?.tools.includes("recall")) return { n: 4, note: "the clock ran with recall, but the order was not the Saturday show for two — read its reply on the stage, then 🐓 once more" };
       if (!turnWith(s, "note_companion")) return { n: 2 };
