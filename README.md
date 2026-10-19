@@ -14,8 +14,8 @@ one gesture on the page, lit by a receipt the process produced.
 | II · where a fact lives | `temp:` · session state · `user:` · a memory file; `recall()` through `BaseMemoryService`; compaction | delete one `# ` on `recall, remember,` · 🐓 again | a wake whose events include `recall` and whose order is the Saturday show |
 | III · the kill | `LongRunningFunctionTool` returns a handle; `ResumabilityConfig` lets the run park on it; the ticket is in session state, in `lab.db` | delete one `# ` · ask for tickets · 💀 KILL · "Where am I in line?" | one `queue_ticket`, handed out by `join_queue` under one boot id and read back by `check_queue` under another — and one ticket at the venue |
 | IV · old news | `before_tool_callback` re-reads the world; returning a dict short-circuits the tool | delete one `# ` · ask · ask about the seats · SELL THE GOOD SEATS · SKIP · "Buy the two section A seats." · "Then section C" | fence.py's `stale_plan` refusal, no 409 from the venue in that turn, an order in another section |
-| V · the graph | `Workflow`: rules as function nodes, judgement as agent nodes; `RequestInput` parks; `rerun_on_resume` | swap `root_agent = buyer_agent` → `nightly` · "go" · 🐓 · SKIP · 🐓 | an `adk_request_input`, ≥ 2 wake-ups, one ticket, one order *(phase 3)* |
-| VI · the budget | the same interrupt aimed at a person; a stable `interrupt_id`; `ctx.resume_inputs`; `someone_is_there()` per request | delete one `# ` on `NIGHT.insert(0, agree_budget)` · answer in your words | `budget` in session state == your sentence *(phase 3)* |
+| V · the graph | `Workflow`: rules as function nodes, judgement as agent nodes; `RequestInput` parks; `rerun_on_resume` | "go" as shipped (a chat turn) · swap `root_agent = buyer_agent` → `nightly` · "go" · 🐓 · SKIP · 🐓 | one session of the graph parked on an `adk_request_input`, two clock wake-ups that answered it (the clock's door routes to the stage's parked run), one ticket at the venue at every park, one order |
+| VI · the budget | the same interrupt aimed at a person; a stable `interrupt_id`; `ctx.resume_inputs`; `someone_is_there()` per request | delete one `# ` on `NIGHT.insert(0, agree_budget)` · ask · answer in your words · "Yes" · SKIP · 🐓 | `budget:ask` and `budget:confirm` answered, `budget` in session state == a sentence you typed, an order, and a clock wake-up in that session that asked nothing |
 | VII · breakfast | the laptop → cloud diff, read only | read the phone | six stubs |
 
 *A stub tears from a receipt, never from a checklist.*
@@ -55,7 +55,8 @@ seed/                   the two-days-ago session and the starting memory file, v
 memory/userx.md         what recall() reads; remember() appends; the seed job rewrites it
 lab/                    the service package (this lab's own code)
   service.py            the routes (below), the workbench mount, the venue mount, the static mount LAST
-  runner.py             the trigger: /api/say (attended) and /api/wake (unattended) through handlers.wake; receipts
+  runner.py             the trigger: /api/say (attended) and /api/wake (unattended) through handlers.wake; the clock's
+                        door answers the stage's parked run (V, VI); the graph's node lines are captured; receipts
   venue_mount.py        the venue on its own loopback port in a thread (sync tools would block one loop)
   jobs.py               subprocess jobs: wake (clock.py --in 10) · seed; `[clock]` lines → events
   progress.py           which stub is torn: a code fact paired with a receipt, per chapter
@@ -68,7 +69,7 @@ site/                   Next 15 static export (output:"export", trailingSlash)
   lib/chapters.ts       the seven chapters — hook · concept · steps · edit · run · reads · tiles · next · wbGuide
   components/           Cover · Rail (stubs) · Stage · NightShift · Chapter · Editor · Workbench · Console · Breakfast
 scripts/
-  walk.py               the headless learner: I–IV on the real model, --restore puts every "# " back
+  walk.py               the headless learner: I–VI on the real model, --restore puts every "# " back
   preflight.py          one real model call + "where am I"
   capture.sh            shoots the page in headless Chrome (?still=1)
 lab.sh                  refuses to start unconfigured · builds the site once · keep-open loop around ONE uvicorn
@@ -81,7 +82,7 @@ GET  /api/health                 {ok, boot_id, mode, venue, port}
 GET  /api/progress               {code:{recall,queue,fence,graph,budget}, lit:{"1".."7"}, boot_id, boots, wakes, venue, …}
 GET  /api/events  · GET /api/log SSE, and the same history once (?still=1 uses it)
 POST /api/say {text, session_id}  a person typed: handlers.wake(…) with budget.mark_attended()
-POST /api/wake {message?}        the clock's door: the same handler, unattended; a new wake-… session
+POST /api/wake {message?}        the clock's door: the same handler, unattended; answers the stage's parked run if there is one, else a new wake-… session
 POST /api/session/new            a fresh stage session id
 GET  /api/session?id=            what lab.db holds for one session (calls, state, compactions)
 GET/POST /api/code               the editor (agent/concert/agent.py · nightly.py); POST evicts the workbench's agent
@@ -98,8 +99,9 @@ GET  /api/source?path=           plain-text read; rejects .., .env, .db, .pyc, /
 ## Verify
 
 ```bash
-uv run python scripts/walk.py --base http://127.0.0.1:3490            # I and II on the real model
-uv run python scripts/walk.py --base http://127.0.0.1:3490 --restore  # puts every "# " back, resets the venue, re-seeds memory; git status clean
+uv run python scripts/walk.py --base http://127.0.0.1:3490 --all      # I–VI on the real model (~7 min)
+uv run python scripts/walk.py --base http://127.0.0.1:3490 --only 5   # one chapter
+uv run python scripts/walk.py --base http://127.0.0.1:3490 --restore  # puts every "# " back and root_agent = buyer_agent, resets the venue, re-seeds memory; git status clean
 LAB_URL=http://127.0.0.1:3490 bash scripts/capture.sh runs/shots      # the shots
 ```
 

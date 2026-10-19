@@ -13,10 +13,15 @@ export default function Console({ f, p }: { f: Folded; p: Progress | null }) {
     : e.type === "world" || e.type === "venue" ? "venue"
     : e.type === "file_saved" || e.type === "session_new" || e.type === "kill" || e.type === "boot" ? "page"
     : e.type === "fence_refused" ? "fence" : e.type === "venue_409" ? "venue"
+    : e.type === "node_line" ? "graph" : e.type === "interrupt_answered" || e.type === "run_parked" ? "server"
     : (e.source as string) === "clock" ? "server" : (e.source as string) === "stage" ? "server" : "lab";
   const text = (e: Record<string, unknown>) => {
     switch (e.type) {
-      case "run_asked": return `woken${e.attended ? "" : " · nobody there"} · "${String(e.text).slice(0, 90)}"`;
+      case "run_asked": return `woken${e.attended ? "" : " · nobody there"}${e.answers ? ` · answering ${String(e.answers).slice(0, 14)}` : ""} · "${String(e.text).slice(0, 90)}"`;
+      case "interrupt_answered": return `  the ${e.by === "the clock" ? "clock's sentence" : "words you typed"} answer interrupt ${String(e.id).slice(0, 14)} in ${e.session_id} — the parked run resumes`;
+      case "node_line": return `  [${e.node}] ${String(e.text).slice(0, 120)}`;
+      case "run_parked": return `  parked on adk_request_input ${String(e.id).slice(0, 14)} · "${String(e.text).slice(0, 80)}" · nothing is running`;
+      case "runner_line": return /answering interrupt/.test(String(e.text)) ? "" : `  ${String(e.text).replace(/^\[server\]\s*/, "").slice(0, 120)}`;
       case "tool_called": return `  called ${e.name}`;
       case "run_said": return `  said   ${String(e.text).slice(0, 110)}`;
       case "run_replied": return `done · session ${e.session_id} · tools ${(e.tools as string[]).join(", ") || "none"}${(e.orders as unknown[]).length ? ` · bought ${(e.orders as unknown[]).length}` : ""}${e.awaiting ? " · parked on a question" : ""}`;

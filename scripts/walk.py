@@ -2,10 +2,10 @@
 person would from the page — the same /api routes, the same edit, the same
 job — and reports which stubs tore.
 
-    uv run python scripts/walk.py                      # I–IV, leaves the file as the walk left it
-    uv run python scripts/walk.py --restore            # restore only: every "# " back, the venue reset, memory re-seeded
-    uv run python scripts/walk.py --only 3             # one chapter   (add --restore to restore afterwards)
-    uv run python scripts/walk.py --all --restore      # walk I–IV, then restore
+    uv run python scripts/walk.py                      # I–VI, leaves the files as the walk left them
+    uv run python scripts/walk.py --restore            # restore only: every "# " back, root_agent = buyer_agent, the venue reset, memory re-seeded
+    uv run python scripts/walk.py --only 5             # one chapter   (add --restore to restore afterwards)
+    uv run python scripts/walk.py --all --restore      # walk I–VI, then restore
     uv run python scripts/walk.py --base http://127.0.0.1:3499
 
 Chapter I: say the plan on the stage, wait, prove nothing ran, then start the
@@ -19,6 +19,13 @@ Chapter IV: as shipped first — ask, ask about the seats, SELL THE GOOD SEATS,
 SKIP THE WAIT, "Buy the two section A seats." → the venue's 409; then the fence
 in, the same five sentences in a new conversation → fence.py's refusal before the
 venue, then "Then section C, two seats." → the order.
+Chapter V: as shipped first — "go" to buyer_agent is a chat turn (the before-number);
+swap `root_agent = buyer_agent` → `nightly`, "go" → the graph parks at check_front, 🐓
+(the clock's door answers the stage's parked run), SKIP THE WAIT, 🐓 → the order.
+Chapter VI: delete the "# " on `NIGHT.insert(0, agree_budget)`, ask for the tickets →
+budget:ask, answer → budget:confirm, "Yes" → the sentence in state and the graph parks,
+SKIP, 🐓 → the order with nobody there and no question asked; then the probe: 🐓 with
+nothing parked opens a fresh session and agree_budget finds nobody there (the ContextVar).
 Exit code 0 when every walked chapter lit. Numbers are printed so the copy in
 site/lib/chapters.ts can be checked against what the model did today.
 """
@@ -40,6 +47,11 @@ RECALL = "recall, remember,"
 QUEUE = "LongRunningFunctionTool(func=join_queue), check_queue,"
 FENCE = "before_tool_callback=refresh_before_purchase,"
 BUDGET = "NIGHT.insert(0, agree_budget)"
+GRAPH_WAS, GRAPH_NOW = "root_agent = buyer_agent", "root_agent = nightly"
+GO = "go"
+ASK = "Get us two tickets to the Amsterdam show."
+BUDGET_SENTENCE = "About a 100 for the cheap seats. 250 if they’re the good ones."
+YES = "Yes, that’s right."
 PLAN = "Grab us two tickets the moment the presale opens. Keep checking."
 LINE = "The presale just opened. Get us tickets to the Amsterdam show."
 WHICH = "The Saturday show, please."                     # if it asks which show (recall should have told it)
@@ -130,8 +142,22 @@ def last_clock(p: dict) -> dict | None:
     return cw[-1] if cw else None
 
 
+def conversation_root() -> None:
+    """Chapters I–IV talk to buyer_agent. If an earlier walk left the graph as the root (V) or
+    agree_budget in (VI), put both back first — a graph would answer the 3am sentence with
+    "what are you willing to spend?" and none of the four receipts could happen."""
+    p = progress()
+    if p["code"].get("budget"):
+        say("agree_budget is in — putting the “# ” back first (chapters I–IV talk to the agent, not the graph)")
+        edit(NIGHTLY, recomment(BUDGET))
+    if p["code"].get("graph"):
+        say("the graph is the root — swapping root_agent back to buyer_agent first (chapters I–IV talk to the agent)")
+        edit(AGENT, lambda s_: s_.replace(GRAPH_NOW, GRAPH_WAS))
+
+
 def chapter1() -> bool:
     """Say the plan; hands down; prove 0 runs happened; then the clock."""
+    conversation_root()
     p0 = progress()
     runs0 = p0.get("wakes_total", len(p0.get("wakes", [])))
     orders0 = p0["venue"]["order_count"]
@@ -150,6 +176,7 @@ def chapter1() -> bool:
 
 
 def chapter2() -> bool:
+    conversation_root()
     p = progress()
     if p["code"].get("recall"):
         say("recall is already in — putting the “# ” back first so the before-receipt is real")
@@ -217,6 +244,7 @@ def kill_and_wait(limit: float = 45) -> str:
 
 def chapter3() -> bool:
     """The kill: the queue tools in, ask, 💀, ask again in the same session."""
+    conversation_root()
     p = progress()
     if not p["code"].get("recall"):
         say("recall is not in — chapter II's line goes in first (the chapters are in order)")
@@ -255,6 +283,7 @@ def _stale_run(sid: str) -> dict:
 
 def chapter4() -> bool:
     """Old news: once as shipped (the venue's 409), then with the fence in (fence.py's refusal)."""
+    conversation_root()
     p = progress()
     for marker, key in ((RECALL, "recall"), (QUEUE, "queue")):
         if not p["code"].get(key):
@@ -282,12 +311,95 @@ def chapter4() -> bool:
     return lit(4)
 
 
+def _graph_line(r: dict) -> str:
+    nodes = " → ".join(f"[{n['node']}]" for n in (r.get("nodes") or [])) or "no node ran"
+    return f"{nodes} · parked on {(r.get('turn_interrupts') or ['—'])[-1][:12]}" if r.get("awaiting") else f"{nodes} · finished"
+
+
+def chapter5() -> bool:
+    """The graph: "go" as a conversation first, then the swap, "go", 🐓, SKIP, 🐓."""
+    p = progress()
+    for marker, key in ((RECALL, "recall"), (QUEUE, "queue"), (FENCE, "fence")):
+        if not p["code"].get(key):
+            edit(AGENT, uncomment(marker))
+    if p["code"].get("budget"):
+        say("agree_budget is already in — putting the “# ” back first (chapter V runs the graph without it)")
+        edit(NIGHTLY, recomment(BUDGET))
+    say("── as shipped: buyer_agent is the root ──")
+    edit(AGENT, lambda s_: s_.replace(GRAPH_NOW, GRAPH_WAS))
+    api("/venue/reset", {})
+    sid = api("/session/new", {})["session_id"]
+    r = stage(GO, sid)
+    say(f"BEFORE: “go” to a conversation → {r.get('kind')} · {len(r.get('turn_tools') or [])} calls · {'a question' if r.get('reply', '').rstrip().endswith('?') else 'a reply'} · no graph, no ticket")
+    say("── the graph is the root ──")
+    edit(AGENT, lambda s_: s_.replace(GRAPH_WAS, GRAPH_NOW))
+    api("/venue/reset", {})
+    sid = api("/session/new", {})["session_id"]
+    say(f"session {sid}")
+    r = stage(GO, sid)
+    say(f"  {_graph_line(r)} · #{r.get('position') or 0:,} · venue tickets {r.get('tickets')} · {r.get('elapsed')}s")
+    if not r.get("awaiting"):
+        say("the graph did not park — nothing for the clock to answer"); return False
+    run_job("wake")
+    w = last_clock(progress())
+    say(f"🐓 #1: answered {str(w.get('answered'))[:12]} in session {w.get('session_id')} · {_graph_line(w)} · #{w.get('position') or 0:,} · venue tickets {w.get('tickets')} · {w.get('elapsed')}s")
+    api("/venue/advance-queue", {})
+    say("SKIP THE WAIT")
+    run_job("wake")
+    w = last_clock(progress())
+    say(f"🐓 #2: answered {str(w.get('answered'))[:12]} · {_graph_line(w)} · {describe(w)}")
+    g = (progress().get("graph") or {}).get("after") or {}
+    say(f"receipt: parks {g.get('parks')} at {g.get('positions')} · clock wake-ups that answered an interrupt {g.get('wakeups')} · tickets at each park {g.get('tickets')} · order {bool(g.get('order'))} · nodes {g.get('nodes')}")
+    return lit(5)
+
+
+def chapter6() -> bool:
+    """The budget: agree_budget first; ask, answer, confirm, SKIP, 🐓; then the unattended probe."""
+    p = progress()
+    for marker, key in ((RECALL, "recall"), (QUEUE, "queue"), (FENCE, "fence")):
+        if not p["code"].get(key):
+            edit(AGENT, uncomment(marker))
+    if not p["code"].get("graph"):
+        say("the graph is not the root — chapter V's swap goes in first (the chapters are in order)")
+        edit(AGENT, lambda s_: s_.replace(GRAPH_WAS, GRAPH_NOW))
+    b = (p.get("budget") or {}).get("before")
+    say(f"BEFORE (chapter V's run, no agree_budget): {b['open']!r} — spent without asking" if b else "BEFORE: no graph run without agree_budget on record (walk chapter V first for the before-number)")
+    edit(NIGHTLY, uncomment(BUDGET))
+    api("/venue/reset", {})
+    sid = api("/session/new", {})["session_id"]
+    say(f"session {sid}")
+    r = stage(ASK, sid)
+    say(f"  {_graph_line(r)} · asked: {r.get('reply', '')[:90]!r}")
+    if "budget:ask" not in (r.get("turn_interrupts") or []):
+        say("agree_budget did not ask — is the line in, and is this a new conversation?"); return False
+    r = stage(BUDGET_SENTENCE, sid)
+    say(f"  {_graph_line(r)} · read back: {r.get('reply', '')[:110]!r}")
+    r = stage(YES, sid)
+    st = (r.get("db") or {}).get("state") or {}
+    say(f"  {_graph_line(r)} · state.budget = {st.get('budget')!r} · state.request = {str(st.get('request'))[:60]!r} · #{r.get('position') or 0:,} · tickets {r.get('tickets')} · {r.get('elapsed')}s")
+    api("/venue/advance-queue", {})
+    say("SKIP THE WAIT")
+    run_job("wake")
+    w = last_clock(progress())
+    say(f"🐓 (nobody there): answered {str(w.get('answered'))[:12]} · budget interrupts this turn {[i for i in (w.get('turn_interrupts') or []) if str(i).startswith('budget:')]} · {describe(w)}")
+    ok = lit(6)
+    a = (progress().get("budget") or {}).get("after") or {}
+    o = a.get("order") or {}
+    say(f"receipt: questions before spending {a.get('questions')} · sentence typed {a.get('typed')} · order {o.get('section')} ${o.get('unit_price')}/seat vs “{a.get('sentence')}” · unattended wake-ups that did not ask {a.get('unattended')}")
+    say("── probe: 🐓 with nothing parked — a fresh session reaches agree_budget with nobody there ──")
+    run_job("wake")
+    w = last_clock(progress())
+    agree = [n["text"] for n in (w.get("nodes") or []) if n["node"] == "agree_budget"]
+    say(f"probe: session {w.get('session_id')} · {agree[0] if agree else 'agree_budget printed nothing'} · budget interrupts {[i for i in (w.get('turn_interrupts') or []) if str(i).startswith('budget:')]} · {_graph_line(w)}")
+    return ok
+
+
 def restore() -> None:
     say("restoring the repo as shipped: every “# ” back, the venue reset, the memory file re-seeded")
     edit(AGENT, recomment(RECALL))
     edit(AGENT, recomment(QUEUE))
     edit(AGENT, recomment(FENCE))
-    edit(AGENT, lambda s: s.replace("root_agent = nightly", "root_agent = buyer_agent"))
+    edit(AGENT, lambda s_: s_.replace(GRAPH_NOW, GRAPH_WAS))
     edit(NIGHTLY, recomment(BUDGET))
     api("/venue/reset", {})
     run_job("seed")
@@ -312,8 +424,8 @@ def main() -> int:
     if a.reset:
         api("/venue/reset", {})
         say("venue reset")
-    steps = {1: chapter1, 2: chapter2, 3: chapter3, 4: chapter4}
-    todo = [a.only] if a.only else ([] if a.restore and not a.all else [1, 2, 3, 4])
+    steps = {1: chapter1, 2: chapter2, 3: chapter3, 4: chapter4, 5: chapter5, 6: chapter6}
+    todo = [a.only] if a.only else ([] if a.restore and not a.all else [1, 2, 3, 4, 5, 6])
     results: dict[int, bool] = {}
     for n in todo:
         say(f"── chapter {n} ──")

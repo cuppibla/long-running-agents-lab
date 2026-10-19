@@ -38,6 +38,7 @@ export default function LabPage() {
   const [dark, setDark] = useState(false);
   const [toast, setToast] = useState("");
   const [nudge, setNudge] = useState("");
+  const [still, setStill] = useState(false);
   const f = useEvents();
   const bootSeen = useRef<string>("");
 
@@ -48,6 +49,7 @@ export default function LabPage() {
     try { setName(qs.get("as") || localStorage.getItem("lra.name") || ""); } catch { setName(qs.get("as") || ""); }
     try { setSid(localStorage.getItem(SID_KEY)); } catch { /* ignore */ }
     if (qs.get("console") === "1") setConsole(true);
+    if (qs.get("still") === "1") setStill(true);
     if (qs.get("check") === "1") setCheck(true);
     const want = parseInt(qs.get("ch") || "", 10);
     try {
@@ -79,6 +81,7 @@ export default function LabPage() {
     if (lastBig.type === "file_saved") setNudge("the file changed — adk web re-reads it on its next run");
     else if (lastBig.type === "run_replied" && lastBig.source === "clock") setNudge(`the clock made session ${lastBig.session_id} — open it in adk web`);
     else if (lastBig.type === "fence_refused") setNudge("fence.py answered purchase — open the event in adk web");
+    else if (lastBig.type === "run_parked") setNudge("the run parked on adk_request_input — in adk web that event has its own answer box");
   }, [lastBig?.i]);   // eslint-disable-line react-hooks/exhaustive-deps
   const openDrawer = (on: boolean) => { setDrawer(on); if (on) setNudge(""); };
 
@@ -123,10 +126,10 @@ export default function LabPage() {
   const torn = ["1", "2", "3", "4", "5", "6"].filter((k) => lit[k]).length;
   const venueUp = Boolean(p?.venue?.ok);
   const status = !f.connected ? ["off", "the lab is away"] : f.running ? ["busy", f.kind === "clock" ? "the clock's run" : f.kind === "stage" ? "replying…" : `${f.kind} running`] : [venueUp ? "" : "off", venueUp ? `the venue is up · ${p?.venue?.clock || 1}×` : "the venue is down"];
-  const asleep = !(chapter === 2 && lit["2"]);
+  const asleep = !((chapter === 2 && lit["2"]) || (chapter === 6 && p?.budget?.after?.asked));
 
   return (
-    <div className="wrap">
+    <div className={"wrap" + (still ? " still" : "")}>
       <div className="head">
         <div>
           <div className="eyebrow"><Link href="/">{SHOW.eyebrow}</Link></div>

@@ -69,9 +69,12 @@ def symbol_span(content: str, symbol: str) -> tuple[int, int] | None:
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == symbol
                                                 for t in node.targets):
             end = node.end_lineno or node.lineno
-            # …and the comment lines right after it, until a blank line: the toggle
-            # that follows `NIGHT = [...]` (chapter VI) rides along.
-            while end < len(lines) and lines[end].lstrip().startswith("#"):
+            # …and the lines right after it, until a blank line, when they are comments
+            # or statements on the same name: the toggle that follows `NIGHT = [...]`
+            # (chapter VI) rides along — as `# NIGHT.insert(0, agree_budget)` before the
+            # edit and as `NIGHT.insert(0, agree_budget)` after it.
+            while end < len(lines) and lines[end].strip() and (
+                    lines[end].lstrip().startswith("#") or lines[end].startswith(symbol + ".")):
                 end += 1
             return up(node.lineno), end
     return None

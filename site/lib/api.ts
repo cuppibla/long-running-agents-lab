@@ -22,9 +22,14 @@ export type Wake = {
   ts: number; source: "stage" | "clock"; attended: boolean; who: string; session_id: string; message: string;
   said: string[]; reply: string; awaiting: boolean; tools: string[]; calls: number; turn_tools?: string[]; tools_in_file: string[]; kind: string;
   orders_new: Order[]; boot_id: string; elapsed: number; code: CodeFacts;
-  db?: { events?: number; interrupts?: number; compactions?: number; invocations?: number; state?: Record<string, unknown>; responses?: ToolResponse[] };
+  db?: { events?: number; interrupts?: number; compactions?: number; invocations?: number; state?: Record<string, unknown>; responses?: ToolResponse[];
+    interrupt_ids?: { id: string; answered: boolean; node: string | null }[] };
   artifacts?: string[]; memory_facts?: number;
   tickets?: number;                       // queue tickets the venue held when this run ended (chapter III wants exactly one)
+  /** chapters V and VI: the interrupt this run ANSWERED (the stage's words, or the clock's), the interrupts it emitted,
+   *  the graph nodes it walked (edges — includes nodes skipped by rerun_on_resume=False), the node lines that RAN
+   *  (what nightly.py printed), and the queue position check_front reported */
+  answered?: string | null; turn_interrupts?: string[]; turn_nodes?: string[]; nodes?: { node: string; text: string }[]; position?: number | null;
 };
 /** One tool response kept in the receipt — what the venue (or fence.py) handed the model. */
 export type ToolResponse = {
@@ -41,6 +46,19 @@ export type FenceReceipt = {
   before: { session_id: string; turn: number | null; error?: string; section?: string; order: Order | null; ts: number; reply: string } | null;
   after: { session_id: string; turn: number | null; believed: number | null; actual: number | null; venue_409: boolean; order: Order | null; ts: number; reply: string; lit: boolean } | null;
 };
+/** chapter V's receipts: "go" to the conversation (before) and one session of the graph (after) */
+export type GraphReceipt = {
+  before: { session_id: string; reply: string; tools: string[]; ts: number; awaiting: boolean } | null;
+  after: { session_id: string; parks: number; positions: number[]; wakeups: number; answers: number; entries: number; tickets: (number | null)[]; one_ticket: boolean;
+    order: Order | null; nodes: string[]; interrupt_ids: string[]; ts: number; reply: string; elapsed: (number | null)[]; lit: boolean } | null;
+};
+/** chapter VI's receipts: the [open] line that spent DEFAULT_BUDGET (before), the session that agreed one (after), the fresh unattended session (probe) */
+export type BudgetReceipt = {
+  before: { session_id: string; open: string; ts: number; source: string; order: Order | null } | null;
+  after: { session_id: string; sentence: string; typed: boolean; asked: boolean; confirmed: boolean; agreed: boolean; questions: number; ask_text: string; confirm_text: string;
+    unattended: number; order: Order | null; request: string; ts: number; reply: string; lit: boolean } | null;
+  probe: { session_id: string; text: string; ts: number; asked: boolean } | null;
+};
 export type Venue = {
   ok: boolean; order_count: number; orders: Order[]; tickets: number; clock: number; hang_armed?: boolean;
   queue?: { ticket: string; position: number; ready: boolean; event_id: string }[];
@@ -54,7 +72,7 @@ export type Progress = {
   wakes: Wake[]; wakes_total?: number; last_wake: Wake | null; stage: { session_id?: string; ts?: number | null };
   thread: Wake[]; clock_runs: number; clock_calls: number | null;
   before: Wake | null; after: Wake | null;
-  kill: KillReceipt | null; fence: FenceReceipt;
+  kill: KillReceipt | null; fence: FenceReceipt; graph: GraphReceipt; budget: BudgetReceipt;
   venue: Venue; mode: string; wake_message: string; error: string | null;
 };
 export const getHealth = () => j<{ ok: boolean; boot_id: string; mode: string; venue: string; port: number }>("/health");

@@ -23,7 +23,9 @@ export default function Stage({ chapter, p, f, name, busy, onSay, onWorld, onKil
   const after = chapter === 2 && Boolean(p?.lit?.["2"]);
   const img = after && c.star.afterImg ? c.star.afterImg : c.star.img;
   const role = after && c.star.afterRole ? c.star.afterRole : c.star.role;
-  const quick = c.steps.filter((s) => s.say).map((s) => s.say as string);     // this chapter's sentences, in order
+  // chapter VI: the sleeper is awake once the graph has asked them something
+  const awake = after || (chapter === 6 && Boolean(p?.budget?.after?.asked));
+  const quick = Array.from(new Set(c.steps.filter((s) => s.say).map((s) => s.say as string)));     // this chapter's sentences, in order, once each
   const defaultLine = quick[0] || LINE;
   const [text, setText] = useState(defaultLine);
   const lastDefault = useRef(defaultLine);
@@ -50,7 +52,7 @@ export default function Stage({ chapter, p, f, name, busy, onSay, onWorld, onKil
         {/* a plain <img> with a gradient behind it; a missing file shows the gradient */}
         <img className="star" src={img} alt="" />
         <div className="starcap"><b>{c.star.name}</b><span>{role}</span></div>
-        <div className={"chip sleeper" + (after ? " awake" : "")}><Av who="sleeper" /><span><b>{name || "you"}</b> · {after ? "awake" : "asleep"}</span></div>
+        <div className={"chip sleeper" + (awake ? " awake" : "")}><Av who="sleeper" /><span><b>{name || "you"}</b> · {awake ? (chapter === 6 ? "awake · asked" : "awake") : "asleep"}</span></div>
         <div className={"chip clockchip" + (wakeRunning ? " firing" : "")}><Av who="clock" /><span><b>the clock</b> · {clockState}</span></div>
       </div>
 
@@ -65,10 +67,10 @@ export default function Stage({ chapter, p, f, name, busy, onSay, onWorld, onKil
         {thread.map((w) => (
           <div key={w.ts + w.session_id} className="turn">
             {w.source === "clock"
-              ? <div className="bubble"><Av who="clock" /><div><div className="who">the clock · 3:00 · {w.session_id}</div><div className="txt">{w.message}</div></div></div>
+              ? <div className="bubble"><Av who="clock" /><div><div className="who">the clock · 3:00 · {w.session_id}{w.answered ? ` · answers the pause ${String(w.answered).slice(0, 12)}` : ""}</div><div className="txt">{w.message}</div></div></div>
               : <div className="bubble you"><Av who="sleeper" /><div><div className="who">{w.who || "you"}</div><div className="txt">{w.message}</div></div></div>}
             <div className="bubble"><Av who="rook" /><div>
-              <div className="who">the agent{(w.turn_tools ?? w.tools).length ? ` · called ${(w.turn_tools ?? w.tools).join(" · ")}` : " · no tool call"}{w.orders_new.length ? ` · bought ${w.orders_new.map((o) => `${o.seats}× ${o.section} ${(o.weekday || "").slice(0, 3)}`).join(", ")}` : ""}{w.boot_id && p?.boot_id && w.boot_id !== p.boot_id ? ` · boot ${w.boot_id}` : ""}</div>
+              <div className="who">{w.kind === "Workflow" ? "the graph" : "the agent"}{w.kind === "Workflow" && (w.nodes || []).length ? ` · ran ${(w.nodes || []).map((x) => x.node).filter((x, i, a) => a.indexOf(x) === i).join(" → ")}` : ""}{(w.turn_tools ?? w.tools).length ? ` · called ${(w.turn_tools ?? w.tools).join(" · ")}` : w.kind === "Workflow" ? "" : " · no tool call"}{w.orders_new.length ? ` · bought ${w.orders_new.map((o) => `${o.seats}× ${o.section} ${(o.weekday || "").slice(0, 3)}`).join(", ")}` : ""}{w.awaiting && w.turn_interrupts?.length ? ` · parked on ${String(w.turn_interrupts.slice(-1)[0]).slice(0, 14)}` : ""}{w.boot_id && p?.boot_id && w.boot_id !== p.boot_id ? ` · boot ${w.boot_id}` : ""}</div>
               <div className={"txt" + (w.awaiting ? " ask" : "")}>{w.reply || (w.awaiting ? "(the run stopped on a question)" : "(no text)")}</div>
             </div></div>
           </div>

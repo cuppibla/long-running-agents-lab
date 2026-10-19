@@ -22,7 +22,13 @@ import type { Progress, Wake } from "./api";
  *  queue ticket read back by a second boot (#14,203 → #14,168, a few seconds later at 1×), and
  *  fence.py refusing a stale purchase (reason stale_plan, actually 0, believed null —
  *  the old map lived in the conversation, not in temp: state) before the venue was
- *  called; as shipped the venue itself answered 409 sold_out. V–VI tear in phase 3. */
+ *  called; as shipped the venue itself answered 409 sold_out. Chapters V and VI were walked on
+ *  2026-10-18 too: "go" to the conversation = recall + search_events + a question back; to the graph =
+ *  four nodes parked at #14,203 on one ticket, 🐓 answering the pause in 0.0 s (check_front only), a
+ *  second 🐓 after SKIP → brief → the agent → 2× A $420; with agree_budget first: budget:ask and
+ *  budget:confirm before any tool, the typed sentence in state verbatim, the 3am wake-up asking nothing
+ *  (the sentence was already in state), and a fresh unattended session printing
+ *  "[agree_budget] unattended. Using: up to $250 per seat" — someone_is_there() false on that request. */
 
 export type Where = "page" | "editor" | "workbench" | "watch";
 export type Step = { where: Where; do: string; say?: string };
@@ -67,6 +73,11 @@ export const WHERE_AM_I = "Where am I in line?";
 export const SEATS = "How much are the seats, and what's still available?";
 export const BUY = "Buy the two section A seats.";
 export const THEN_C = "Then section C, two seats.";
+/** chapter V and VI's sentences — scripts/walk.py says the same ones */
+export const GO = "go";
+export const ASK = "Get us two tickets to the Amsterdam show.";
+export const BUDGET_SENTENCE = "About a 100 for the cheap seats. 250 if they’re the good ones.";
+export const YES = "Yes, that’s right.";
 export const CLOSING = "Waking up was never the hard part.";
 
 export const WHERE: Record<Where, string> = { page: "on the page", editor: "in the editor", workbench: "in the workbench", watch: "watch" };
@@ -106,7 +117,6 @@ const joinOf = (w: Wake | null | undefined) => (w?.db?.responses || []).filter((
 /** the newest stage run whose session holds a queue ticket (chapter III, before or after the kill) */
 const lastJoined = (p: Progress | null) => stageWakes(p).filter((w) => joinOf(w)).slice(-1)[0] || null;
 const pos = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `#${n.toLocaleString()}`);
-const phaseNote = (phase: number, what: string) => `this chapter is wired in phase ${phase} — the edit saves and the agent runs with it, but ${what} is not read yet, so the stub cannot tear here today.`;
 
 export const CHAPTERS: Chapter[] = [
   { n: 1, roman: "I", name: "the clock", pill: ["read", "PRESS ONE"], phase: 1,
@@ -245,50 +255,88 @@ export const CHAPTERS: Chapter[] = [
 
   { n: 5, roman: "V", name: "the graph", pill: ["edit", "SWAP ONE"], phase: 3,
     star: { img: "/art/rook.jpg", name: "the agent", role: "the last node of the graph" },
-    hook: "At 3am, who decides the order of things? The model — nearly every time.",
-    concept: "Some steps have no judgement in them: take exactly one queue ticket, ask whether it is your turn, write the brief. A <b>Workflow</b> makes those <b>function nodes</b> (the same every night) and keeps <b>agent nodes</b> only where a decision lives (which show; what to do when section A is gone). The wait is a node returning <code>RequestInput</code>: the run <b>parks</b>, the process may exit, and every wake-up re-enters the graph — <code>rerun_on_resume=False</code> is why it does not take a second ticket.",
+    hook: "At 3am, who decides the order of things? The model — nearly every time. Say “go” to it and watch which tools it picks.",
+    concept: "Some steps have no judgement in them: take exactly one queue ticket, ask whether it is your turn, write the brief. A <b>Workflow</b> makes those <b>function nodes</b> (the same every night) and keeps <b>agent nodes</b> only where a decision lives (<code>pick_show</code>; your agent, last, when section A is gone). The wait is a node returning <code>RequestInput</code>: the run <b>parks</b>, the process may exit, and every wake-up re-enters the graph from <code>START</code> — <code>rerun_on_resume=False</code> on <code>pick_show</code> and <code>queue_up</code> is why it does not pick again or take a second ticket. On this page the clock’s door answers the parked run: a wake-up with no session named goes to the stage’s interrupt, not to a new session.",
     steps: [
+      { where: "page", do: "as shipped, say “go” to the conversation — the model recalls, searches and asks you back. It chose that order", say: GO },
       { where: "editor", do: "swap the one line — the root becomes the graph; your agent is its last node" },
-      { where: "page", do: "start the night", say: "go" },
-      { where: "watch", do: "parked at check_front, #14,203. Nothing is running" },
-      { where: "page", do: "press 🐓 — the clock answers the pause. Still one ticket" },
-      { where: "page", do: "SKIP THE WAIT, then 🐓 once more" },
-      { where: "workbench", do: "the graph view: nodes turn green; find the box that answers the interrupt (not the chat box)" },
+      { where: "page", do: "↻ new conversation, then “go” — open → pick_show → queue_up → check_front run in order and park at #14,203", say: GO },
+      { where: "page", do: "press 🐓 — the clock’s sentence answers the pause. Only check_front runs; still one ticket" },
+      { where: "page", do: "SKIP THE WAIT, then 🐓 once more — at the front: brief, then your agent buys" },
+      { where: "workbench", do: "the graph view: nodes turn green; the adk_request_input event has its own Enter-your-response box" },
     ],
     edit: { file: "agent/concert/agent.py", symbol: "root_agent", marker: M.graphWas, afterMarker: M.graphNow, change: [M.graphWas, M.graphNow], fix: swapLine(M.graphWas, M.graphNow), swap: true, afterHint: "lands on your next message — the stage runs the graph" },
-    sources: [["agent/concert/agent.py · the line", "agent/concert/agent.py"], ["agent/concert/nightly.py · the graph", "agent/concert/nightly.py"], ["monstertix/handlers.py · pending_interrupt", "monstertix/handlers.py"]],
-    expect: "“go” runs four nodes and parks at #14,203. Each 🐓 re-enters the graph — and the venue still shows one ticket. After SKIP, brief and your agent run and it buys.",
-    check: "an adk_request_input event, at least two wake-ups, exactly one queue ticket at the venue, one order",
-    reads: (p) => [queueRead(p), { k: "wake-ups", v: String(p?.clock_runs ?? 0), s: "the clock", cls: "hi" }, { k: "tickets", v: String(p?.venue?.tickets ?? 0), s: "venue", cls: "" }, { k: "the agent", v: p?.code?.graph ? "a graph" : "chatting", s: p?.code?.graph ? "nightly · 6 nodes" : "no graph", cls: "" }],
-    tiles: () => [],
-    next: (p) => !p?.code?.graph ? "swap the line in the editor (buyer_agent → nightly), then say “go” on the stage" : phaseNote(3, "the parked interrupt"),
-    wbGuide: () => ({ steps: ["reload — the dropdown still says <b>concert</b>, but the left panel now draws a <b>graph</b>", "type <code>go</code>; watch open → pick_show → queue_up → check_front turn green and stop", "⚠ to wake it here, type in the <b>Enter your response…</b> box ON the adk_request_input event — the chat box at the bottom starts a NEW run and takes a second ticket. (The stage’s talk box does this for you.)"], see: "edges with 2× / 3× badges, and one queue ticket at the venue — that is rerun_on_resume=False doing real work." }) },
+    sources: [["agent/concert/agent.py · the line", "agent/concert/agent.py"], ["agent/concert/nightly.py · the graph", "agent/concert/nightly.py"], ["monstertix/handlers.py · pending_interrupt", "monstertix/handlers.py"], ["lab/runner.py · the clock answers the stage", "lab/runner.py"], ["lab/progress.py · graph_receipt", "lab/progress.py"]],
+    expect: "Before: “go” is a chat turn — recall, search_events, then a question back (which show?). After: “go” runs four nodes and parks at #14,203 with one ticket at the venue; 🐓 answers the pause in under a second — check_front alone runs, no model call — and the venue still holds one ticket; after SKIP the third entry runs brief and your agent: 2× A, $420, inside the $250 a seat nightly.py names.",
+    check: "a run of the graph parked on an adk_request_input, two clock wake-ups that answered it, one ticket at the venue at every park, one order",
+    reads: (p) => { const g = p?.graph?.after; const parked = g && g.parks > 0 && !g.order; return [queueRead(p),
+      { k: "wake-ups", v: String(g?.wakeups ?? 0), s: g?.wakeups ? "answered the pause" : "the clock", cls: "hi" },
+      { k: "tickets", v: String(p?.venue?.tickets ?? 0), s: g?.one_ticket ? "one at every park" : "at the venue", cls: g?.one_ticket ? "ok" : (p?.venue?.tickets ?? 0) > 1 ? "bad" : "" },
+      { k: "the agent", v: !p?.code?.graph ? "chatting" : g?.order ? "bought" : parked ? "parked" : "a graph", s: !p?.code?.graph ? "the model orders the steps" : g?.order ? `${g.entries} entries · 1 ticket` : parked ? `check_front · ${pos(g?.positions.slice(-1)[0])}` : "nightly · 6 nodes", cls: "" }]; },
+    tiles: (p) => { const b = p?.graph?.before, g = p?.graph?.after; const out: Tile[] = [];
+      if (b) out.push({ k: "as shipped · “go” to a conversation", v: `${b.tools.length} calls`, cls: "bad", s: `${b.tools.join(" · ") || "no tool"} — then ${/\?\s*$/.test(b.reply) ? "a question back" : "a reply"}. The model chose the order; no ticket` });
+      if (g) { const ran = g.nodes.filter((n) => n !== "concert").join(" → ") + (g.nodes.includes("concert") ? " → your agent" : "");
+        out.push({ k: "the graph · nodes that ran", v: `${g.nodes.length} nodes`, cls: "ok", s: ran },
+          { k: "entries into the graph", v: String(g.entries), cls: "hi", s: `“go” + ${g.answers} answers to the pause · pick_show and queue_up ran once (rerun_on_resume=False)` },
+          { k: "tickets at the venue at each park", v: g.tickets.map((t) => String(t ?? "?")).join(" · ") || "—", cls: g.one_ticket ? "ok" : "bad", s: g.one_ticket ? `parked at ${g.positions.map(pos).join(" → ")} — one ticket, every time` : "more than one — a wake-up started a new run instead of answering" },
+          ...(g.order ? [{ k: "the order", v: `${g.order.section} · ${money(g.order.total)}`, cls: "hi" as const, s: `${(g.order.weekday || "").toLowerCase()} · ${g.order.seats}× · bought by your agent, the last node, at the front` }] : [])); }
+      return out; },
+    next: (p) => { const on = p?.code?.graph; const b = p?.graph?.before, g = p?.graph?.after; const s = lastStage(p);
+      if (!on && !b) return "say “go” on the stage as shipped — a conversation: watch which tools the model picks, and that it asks you back";
+      if (!on) return "that was the model choosing the order. Swap the line in the editor (buyer_agent → nightly), then ↻ new conversation and say “go” again";
+      if (!g || (s && s.kind !== "Workflow")) return "↻ new conversation, then say “go” — the graph runs open → pick_show → queue_up → check_front and parks";
+      if (g.parks && !g.wakeups && !g.order) return `parked at ${pos(g.positions.slice(-1)[0])} on one ticket. Press 🐓 — the clock’s sentence answers the interrupt, and only check_front runs`;
+      if (g.wakeups === 1 && !g.order) return "one wake-up answered, still one ticket, still in line. SKIP THE WAIT, then 🐓 once more";
+      if (!g.order) return "at the front but no order yet — read the reply on the stage, then 🐓 again";
+      if (!p?.lit?.["5"]) return g.wakeups < 2 ? "it bought — but the clock answered the pause only once. RESET, ↻ new conversation, “go”, 🐓, SKIP, 🐓" : `it bought, but the venue held ${g.tickets.join(", ")} tickets at the parks — RESET, ↻ new conversation and run the chapter once more`;
+      return "✓ stub V torn. Three entries, one ticket, one order. Chapter VI: it spent “up to $250 per seat” because nightly.py says so — who agreed to that?"; },
+    wbGuide: (p) => { const sid = p?.graph?.after?.session_id || p?.stage?.session_id; return { steps: ["reload the drawer — the dropdown still says <b>concert</b>, but the left panel now draws a <b>graph</b>", `Sessions: open <b>${sid || "your session"}</b> — open_the_night → pick_show → queue_up → check_front are green and the run stopped`, "the last event is ⚡ <b>adk_request_input</b> with an <b>Enter your response…</b> box of its own. ⚠ That box answers the pause; the chat box at the bottom starts a NEW run and takes a second ticket. (The stage’s talk box and the clock’s door already answer the pause for you.)", "after 🐓: the edges into pick_show, queue_up and check_front carry a 2× / 3× badge — walked again, not run again"], see: "a graph parked on one interrupt, edges counted per wake-up, and one queue ticket at the venue — rerun_on_resume=False doing real work." }; } },
 
   { n: 6, roman: "VI", name: "the budget", pill: ["edit", "EDIT ONE"], phase: 3,
-    star: { img: "/art/sam-hero.jpg", name: "Sam", role: "the second ticket" },
-    hook: "It can buy on its own now. Who said how much?",
-    concept: "The same interrupt that waits for a venue can wait for a <b>person</b>. <code>agree_budget</code> returns a <code>RequestInput</code> aimed at you, reads your answer back, and stores <b>the sentence</b> — not a schema — in <b>session state</b> (no prefix: a limit agreed for this booking, not forever). Three things make it work: <code>rerun_on_resume=True</code>, a <b>stable</b> <code>interrupt_id</code>, and reading the answer from <code>ctx.resume_inputs</code>. And <code>someone_is_there()</code> is a fact about the <b>request</b>: the stage’s box marks a person present; the clock’s door does not.",
+    star: { img: "/art/sam-hero.jpg", name: "Sam", role: "the second ticket · inside what you said" },
+    hook: "It can buy on its own now. Who said how much? Chapter V spent “up to $250 per seat” — a string in nightly.py that nobody agreed to.",
+    concept: "The same interrupt that waits for a venue can wait for a <b>person</b>. <code>agree_budget</code> returns a <code>RequestInput</code> aimed at you, reads your answer back, and stores <b>the sentence</b> — not a schema — in <b>session state</b> (no prefix: a limit agreed for this booking, not forever). Three things make it work: <code>rerun_on_resume=True</code>, a <b>stable</b> <code>interrupt_id</code> (<code>budget:ask</code>, <code>budget:confirm</code>), and reading the answer from <code>ctx.resume_inputs</code>. And <code>someone_is_there()</code> is a fact about the <b>request</b>: <code>/api/say</code> marks a person present for that request only; <code>/api/wake</code> does not, so at 3am the node takes the standing budget instead of stopping on a question nobody will answer.",
     steps: [
       { where: "editor", do: "delete the “# ” — agree_budget becomes the first node" },
-      { where: "page", do: "ask for the tickets", say: LINE },
-      { where: "page", do: "answer the way people answer, in the same box", say: "About a 100 for the cheap seats. 250 if they’re the good ones." },
-      { where: "page", do: "confirm", say: "Yes, that’s right." },
-      { where: "page", do: "SKIP THE WAIT, then 🐓 — nobody is there, and it does not ask twice" },
-      { where: "workbench", do: "State tab: budget — your sentence, verbatim, no prefix" },
+      { where: "page", do: "↻ new conversation, then ask — the run stops before any tool runs and asks what you will spend", say: ASK },
+      { where: "page", do: "answer the way people answer, in the same box — it reads your sentence back", say: BUDGET_SENTENCE },
+      { where: "page", do: "confirm — the sentence lands in session state and four nodes run off one “yes”", say: YES },
+      { where: "page", do: "SKIP THE WAIT, then 🐓 — nobody is there, and it does not ask again" },
+      { where: "workbench", do: "State tab: budget — your sentence, verbatim, no prefix. New Session → it is gone, and the graph asks again" },
     ],
-    edit: { file: "agent/concert/nightly.py", symbol: "NIGHT", marker: `# ${M.budget}`, afterMarker: M.budget, change: [`# ${M.budget}`, M.budget], fix: uncomment(M.budget), afterHint: "lands on your next message" },
-    sources: [["agent/concert/nightly.py · the line", "agent/concert/nightly.py"], ["agent/concert/nightly.py · agree_budget", "agent/concert/nightly.py"], ["agent/concert/budget.py · someone_is_there()", "agent/concert/budget.py"], ["lab/runner.py · mark_attended on /api/say", "lab/runner.py"]],
-    expect: "The run stops and asks. It reads your number back before it commits. State holds your sentence with no prefix. After SKIP, the clock’s wake finds nobody there and uses the standing budget rather than stopping on a question nobody will answer.",
-    check: "budget in session state equal to a sentence you typed, one order, and an unattended wake that did not stop on the question",
-    reads: (p) => [{ k: "asked you", v: "0", s: "questions before spending", cls: "hi" }, { k: "budget", v: p?.code?.budget ? "yours" : "default", s: p?.code?.budget ? "agreed in the graph" : "up to $250 per seat", cls: "" }, ordersRead(p), { k: "the agent", v: "—", s: "", cls: "" }],
-    tiles: () => [],
-    next: (p) => !p?.code?.budget ? "delete the “# ” on the red line, then ask for the tickets on the stage" : phaseNote(3, "the sentence in session state"),
-    wbGuide: () => ({ steps: ["type the ask in the chat box; the run stops on an <b>adk_request_input</b>", "answer in <b>that event’s box</b>; it asks again to confirm — same box", "<b>State</b> tab: <code>budget</code> — your sentence, no prefix. Start a New Session: it is gone, and the graph asks again"], see: "four nodes running off one “yes”, and a limit that lives exactly as long as the conversation." }) },
+    edit: { file: "agent/concert/nightly.py", symbol: "NIGHT", marker: `# ${M.budget}`, afterMarker: M.budget, change: [`# ${M.budget}`, M.budget], fix: uncomment(M.budget), afterHint: "lands on your next message — in a new conversation" },
+    sources: [["agent/concert/nightly.py · the line", "agent/concert/nightly.py"], ["agent/concert/nightly.py · agree_budget", "agent/concert/nightly.py"], ["agent/concert/budget.py · someone_is_there()", "agent/concert/budget.py"], ["lab/runner.py · mark_attended on /api/say", "lab/runner.py"], ["lab/progress.py · budget_receipt", "lab/progress.py"]],
+    expect: "Before (chapter V’s run): “[open] Budget: up to $250 per seat” — spent, nobody asked. After: two questions before any tool runs (what will you spend? · So: … have I got that right?), your sentence in state verbatim, then the same four nodes park at #14,203. The 3am wake-up finds the budget already agreed and buys inside it without asking — 2× A at $210 a seat against “250 if they’re the good ones”. A 🐓 with nothing parked opens a fresh session, finds nobody there, and uses the default rather than stopping.",
+    check: "budget in session state equal to a sentence you typed, budget:ask and budget:confirm answered, an order, and a clock wake-up in that session that asked nothing",
+    reads: (p) => { const a = p?.budget?.after; const on = p?.code?.budget; return [
+      { k: "asked you", v: String(a?.questions ?? 0), s: "questions before spending", cls: a?.questions ? "ok" : on ? "hi" : "bad" },
+      { k: "budget", v: a?.sentence ? "yours" : "default", s: a?.sentence ? a.sentence : "up to $250 per seat · nightly.py", cls: a?.sentence ? "ok" : "" },
+      ordersRead(p),
+      { k: "the agent", v: a?.order ? "bought" : a?.agreed ? "parked" : a?.asked ? "asking" : on ? "will ask" : "spends", s: a?.order ? `${money(a.order.unit_price)} a seat · inside` : a?.agreed ? "budget agreed · in line" : a?.asked ? "waiting for your answer" : on ? "agree_budget first" : "nobody agreed anything", cls: "" }]; },
+    tiles: (p) => { const b = p?.budget?.before, a = p?.budget?.after, pr = p?.budget?.probe; const out: Tile[] = [];
+      if (b) out.push({ k: "as shipped · the [open] line", v: "nobody asked", cls: "bad", s: `“${b.open}” — a constant in nightly.py${b.order ? `, then ${b.order.seats}× ${b.order.section} · ${money(b.order.total)}` : ""}` });
+      if (a) { out.push({ k: "questions before spending", v: String(a.questions), cls: "ok", s: "budget:ask · budget:confirm — both stopped the run, both answered in the same box" });
+        if (a.sentence) out.push({ k: "the sentence · session state, no prefix", v: `“${a.sentence}”`, cls: a.typed ? "ok" : "bad", s: a.typed ? "verbatim — you typed it; a new session starts with none" : "not a sentence you typed on the stage" });
+        if (a.order) out.push({ k: "seat price vs your sentence", v: `${money(a.order.unit_price)} a seat`, cls: "hi", s: `${a.order.seats}× ${a.order.section} · ${money(a.order.total)} — against “${a.sentence}”. The model’s judgement, not a parsed number` });
+        out.push({ k: "the 3am wake-up", v: a.unattended ? "did not ask" : "—", cls: a.unattended ? "ok" : "bad", s: a.unattended ? "agree_budget re-ran (rerun_on_resume=True), found your sentence in state, and let the night run" : "no unattended wake-up in this session yet — SKIP THE WAIT, then 🐓" }); }
+      if (pr) out.push({ k: "a fresh 3am session · someone_is_there()", v: "false", cls: "hi", s: `“[agree_budget] ${pr.text}” — nothing agreed, nobody to ask: the default, not a question` });
+      return out; },
+    next: (p) => { const on = p?.code?.budget; const a = p?.budget?.after; const s = lastStage(p);
+      if (!p?.code?.graph) return "chapter V first: the root must be the graph (root_agent = nightly) before agree_budget can be its first node";
+      if (!on) return "delete the “# ” on the red line (or press “apply the edit for me”), then ↻ new conversation and ask for the tickets";
+      if (!a || (s && s.kind === "Workflow" && !s.turn_interrupts?.length && !a.asked)) return "↻ new conversation, then ask for the tickets — the run stops on budget:ask before any tool runs";
+      if (a.asked && !a.confirmed) return "it asked. Answer in the same box — your words, however you like — and it reads them back";
+      if (a.confirmed && !a.agreed) return "it read your sentence back. Say “Yes, that’s right.” — the sentence lands in state and four nodes run";
+      if (a.agreed && !a.unattended && !a.order) return `agreed: “${a.sentence}”. Parked at check_front on one ticket. SKIP THE WAIT, then 🐓 — nobody there, and it must not ask again`;
+      if (!a.order) return "the clock answered the pause and did not ask — but no order yet. Read the reply on the stage; 🐓 again if it is still in line";
+      if (!p?.lit?.["6"]) return !a.typed ? "the budget in state is not a sentence you typed on the stage — ↻ new conversation and answer in the talk box, not in adk web" : "the order is in, but the clock never answered this session’s pause — RESET, ↻ new conversation, and run the five sentences again";
+      return "✓ stub VI torn. Two questions, your sentence, one order inside it, and a 3am wake-up that asked nothing. Chapter VII: breakfast."; },
+    wbGuide: (p) => { const sid = p?.budget?.after?.session_id || p?.stage?.session_id; return { steps: [`Sessions: open <b>${sid || "your session"}</b> — the first event is ⚡ <b>adk_request_input</b> with id <code>budget:ask</code>, before any tool`, "the next ⚡ adk_request_input is <code>budget:confirm</code> — the read-back. Both were answered from the stage’s box; in adk web you would answer in <b>each event’s own box</b>, never the chat box", "<b>State</b> tab: <code>budget</code> — your sentence, no prefix; <code>request</code> — everything you typed, joined", "<b>New Session</b> (top left), type the ask again: the graph stops on budget:ask once more — the budget died with the conversation it was agreed in"], see: "a limit in a person’s own words, living exactly as long as the conversation — and asked for again the moment there is a new one." }; } },
 
-  { n: 7, roman: "VII", name: "breakfast", pill: ["gold", "THE MESSAGE"], phase: 4,
+  { n: 7, roman: "VII", name: "breakfast", pill: ["gold", "THE MESSAGE"], phase: 3,
     star: { img: "/art/clock-hero.jpg", name: "the clock", role: "7:30 · wake up" },
     hook: "Six stubs. What did it do while you slept?",
-    concept: "Every stub on this page is torn by a <b>receipt</b>: a session the clock made, a recall call, one ticket under two boots, a refusal written by your code, one ticket under three wake-ups, a sentence in state. The page never ticks a checklist. The agent, its tools, its callbacks and the budget are what you would deploy — two URIs and one environment variable change, and nothing else does.",
+    concept: "Every stub on this page is torn by a <b>receipt</b>: a session the clock made, a recall call, one ticket under two boots, a refusal written by your code, one ticket under two wake-ups, a sentence in state. The page never ticks a checklist. The agent, its tools, its callbacks and the budget are what you would deploy — two URIs and one environment variable change, and nothing else does.",
     steps: [{ where: "page", do: "read the message on the phone" }],
     sources: [["lab/progress.py · what tears a stub", "lab/progress.py"], ["scripts/walk.py · the headless learner", "scripts/walk.py"], ["lab/runner.py · the two doors", "lab/runner.py"]],
     expect: "", check: "six stubs · the breakfast message",

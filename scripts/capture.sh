@@ -9,7 +9,7 @@
 #
 # Chrome's own --timeout ends each shot; no shell `timeout` is needed (macOS
 # has none by default). Leaves the repo as shipped at the end (walk --restore).
-# Chapters I–IV in both states, the cover, the console, the breakfast message.
+# Chapters I–VI in both states, the cover, the console, the breakfast message.
 # The receipts file (runs/state.json) is moved aside first so the "as shipped"
 # shots show an untorn page, and put back at the end.
 set -euo pipefail
@@ -39,7 +39,7 @@ echo "as shipped (receipts aside)"
 $PY scripts/walk.py --base "$URL" --restore >/dev/null 2>&1 || true
 reboot runs/state.json runs/state.before-capture.json
 shoot cover "/?as=Annie"
-for n in 1 2 3 4; do shoot "ch$n-before" "/lab/?ch=$n&still=1&as=Annie"; done
+for n in 1 2 3 4 5 6; do shoot "ch$n-before" "/lab/?ch=$n&still=1&as=Annie"; done
 
 echo "chapter I"
 walk 1
@@ -58,6 +58,16 @@ echo "chapter IV"
 walk 4
 shoot ch4-after "/lab/?ch=4&still=1&as=Annie"
 shoot console-4 "/lab/?ch=4&still=1&console=1&as=Annie"
+
+echo "chapter V"
+walk 5
+shoot ch5-after "/lab/?ch=5&still=1&as=Annie"
+shoot console-5 "/lab/?ch=5&still=1&console=1&as=Annie"
+
+echo "chapter VI"
+walk 6
+shoot ch6-after "/lab/?ch=6&still=1&as=Annie"
+shoot console-6 "/lab/?ch=6&still=1&console=1&as=Annie"
 shoot breakfast "/lab/?ch=7&still=1&as=Annie"
 
 echo "restore"

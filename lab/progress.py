@@ -6,8 +6,12 @@
          under another, in the same session — and the venue holds exactly one ticket   runs/state.json ← lab.db + venue.db
     IV   in one turn: fence.py answered purchase with reason stale_plan (the venue was never asked:
          no 409 in that turn), and the order that followed is in another section        runs/state.json ← lab.db + venue.db
-    V    an adk_request_input, ≥ 2 wake-ups, one ticket, one order                    (phase 3)
-    VI   budget in session state == a sentence you typed, one order, an unattended wake that did not ask (phase 3)
+    V    in one session of the graph: a run parked on an adk_request_input, ≥ 2 clock wake-ups that
+         answered an interrupt (the clock's door routed to the stage's parked session), the venue
+         holding exactly one ticket at every park, and one order                       runs/state.json ← lab.db + venue.db
+    VI   in one session of the graph with agree_budget first: budget:ask and budget:confirm asked and
+         answered, `budget` in session state equal to a sentence typed on the stage, an order, and a
+         clock wake-up in that session that did not emit a budget interrupt            runs/state.json ← lab.db + venue.db
     VII  I–VI
 
 A lamp pairs a receipt with the file facts that held when it ran — the receipt
@@ -158,6 +162,103 @@ def fence_receipt(wakes: list[dict]) -> dict | None:
     return out
 
 
+def _by_session(wakes: list[dict]) -> dict[str, list[dict]]:
+    out: dict[str, list[dict]] = {}
+    for w in wakes:
+        if w.get("session_id"):
+            out.setdefault(w["session_id"], []).append(w)
+    return out
+
+
+def _graph_run(w: dict) -> bool:
+    return w.get("kind") == "Workflow" and bool((w.get("code") or {}).get("graph"))
+
+
+def graph_receipt(wakes: list[dict]) -> dict:
+    """Chapter V. One session of the graph in which: a run parked on an adk_request_input
+    (check_front), at least two clock wake-ups answered an interrupt in that session, the
+    venue held exactly one ticket at every park, and an order followed. Also the before-
+    state: the newest "go" said to buyer_agent as a conversation (no graph)."""
+    out: dict[str, Any] = {"before": None, "after": None}
+    for w in wakes:
+        if w.get("source") == "stage" and w.get("kind") == "LlmAgent" and (w.get("message") or "").strip().lower() == "go":
+            out["before"] = {"session_id": w.get("session_id"), "reply": (w.get("reply") or "")[:200], "tools": w.get("turn_tools") or w.get("tools") or [],
+                             "ts": w.get("ts"), "awaiting": w.get("awaiting")}
+    for sid, ws in _by_session(wakes).items():
+        runs = [w for w in ws if _graph_run(w)]
+        if not runs:
+            continue
+        parks = [w for w in runs if w.get("awaiting") and (w.get("turn_interrupts") or [])]
+        wakeups = [w for w in runs if w.get("source") == "clock" and w.get("answered")]
+        answers = [w for w in runs if w.get("answered")]
+        orders = [o for w in runs for o in (w.get("orders_new") or [])]
+        nodes: list[str] = []
+        for w in runs:
+            for n in w.get("turn_nodes") or []:
+                if n not in nodes:
+                    nodes.append(n)
+        positions = [w.get("position") for w in parks if w.get("position") is not None]
+        tickets_at_parks = [w.get("tickets") for w in parks]
+        one_ticket = bool(parks) and all(t == 1 for t in tickets_at_parks)
+        row = {"session_id": sid, "parks": len(parks), "positions": positions, "wakeups": len(wakeups), "answers": len(answers),
+               "entries": 1 + len(answers), "tickets": tickets_at_parks, "one_ticket": one_ticket, "order": orders[-1] if orders else None,
+               "nodes": nodes, "interrupt_ids": [i for w in parks for i in (w.get("turn_interrupts") or [])][-4:],
+               "ts": runs[-1].get("ts"), "reply": (runs[-1].get("reply") or "")[:240], "elapsed": [w.get("elapsed") for w in runs],
+               "lit": bool(parks) and len(wakeups) >= 2 and one_ticket and bool(orders)}
+        if out["after"] is None or row["lit"] and not out["after"]["lit"] or (row["lit"] == out["after"]["lit"] and row["ts"] > out["after"]["ts"]):
+            out["after"] = row
+    return out
+
+
+def budget_receipt(wakes: list[dict]) -> dict:
+    """Chapter VI. One session of the graph with agree_budget first: budget:ask asked (attended),
+    answered and budget:confirm asked, answered and `budget` stored equal to a sentence typed on
+    the stage; an order; and a clock wake-up in that session that emitted no budget interrupt.
+    Also the before-state (the newest graph run without agree_budget: the [open] line spending
+    DEFAULT_BUDGET with nobody asked) and the probe (the newest unattended run that reached
+    agree_budget with nothing agreed: "[agree_budget] unattended. Using: …")."""
+    out: dict[str, Any] = {"before": None, "after": None, "probe": None}
+    for w in wakes:
+        if w.get("kind") != "Workflow":
+            continue
+        opens = [n["text"] for n in (w.get("nodes") or []) if n.get("node") == "open"]
+        agree = [n["text"] for n in (w.get("nodes") or []) if n.get("node") == "agree_budget"]
+        if not (w.get("code") or {}).get("budget") and opens and not any(str(i).startswith("budget:") for i in w.get("turn_interrupts") or []):
+            out["before"] = {"session_id": w.get("session_id"), "open": opens[0][:200], "ts": w.get("ts"), "source": w.get("source"),
+                             "order": (w.get("orders_new") or [None])[0]}
+        if (w.get("code") or {}).get("budget") and not w.get("attended") and any("unattended" in t for t in agree):
+            out["probe"] = {"session_id": w.get("session_id"), "text": [t for t in agree if "unattended" in t][0][:200], "ts": w.get("ts"),
+                            "asked": any(str(i).startswith("budget:") for i in w.get("turn_interrupts") or [])}
+    for sid, ws in _by_session(wakes).items():
+        runs = [w for w in ws if _graph_run(w) and (w.get("code") or {}).get("budget")]
+        if not runs:
+            continue
+        typed = {(w.get("message") or "").strip() for w in ws if w.get("source") == "stage"}
+        ask = next((w for w in runs if "budget:ask" in (w.get("turn_interrupts") or [])), None)
+        confirm = next((w for w in runs if w.get("answered") == "budget:ask" and "budget:confirm" in (w.get("turn_interrupts") or [])), None)
+        agreed = next((w for w in runs if w.get("answered") == "budget:confirm"), None)
+        sentence = ""
+        for w in reversed(runs):
+            b = ((w.get("db") or {}).get("state") or {}).get("budget")
+            if b:
+                sentence = str(b)
+                break
+        unattended = [w for w in runs if w.get("source") == "clock" and w.get("answered")
+                      and not any(str(i).startswith("budget:") for i in w.get("turn_interrupts") or [])]
+        orders = [o for w in runs for o in (w.get("orders_new") or [])]
+        questions = [i for w in runs for i in (w.get("turn_interrupts") or []) if str(i).startswith("budget:")]
+        row = {"session_id": sid, "sentence": sentence, "typed": bool(sentence) and sentence.strip() in typed,
+               "asked": bool(ask), "confirmed": bool(confirm), "agreed": bool(agreed), "questions": len(questions),
+               "ask_text": (ask or {}).get("reply", "")[:240] if ask else "", "confirm_text": (confirm or {}).get("reply", "")[:240] if confirm else "",
+               "unattended": len(unattended), "order": orders[-1] if orders else None,
+               "request": str(((agreed or runs[-1]).get("db") or {}).get("state", {}).get("request") or "")[:200],
+               "ts": runs[-1].get("ts"), "reply": (runs[-1].get("reply") or "")[:240],
+               "lit": bool(sentence) and sentence.strip() in typed and bool(ask) and bool(confirm) and bool(orders) and bool(unattended)}
+        if out["after"] is None or row["lit"] and not out["after"]["lit"] or (row["lit"] == out["after"]["lit"] and row["ts"] > out["after"]["ts"]):
+            out["after"] = row
+    return out
+
+
 def read() -> dict[str, Any]:
     global _last_good, _cache
     try:
@@ -168,12 +269,15 @@ def read() -> dict[str, Any]:
         saturday = [w for w in recalled if any(o.get("event_id") == SATURDAY for o in w.get("orders_new") or [])]
         kill = kill_receipt(wakes)
         fence = fence_receipt(wakes)
+        graph = graph_receipt(wakes)
+        budget = budget_receipt(wakes)
         lit = {
             1: any((w.get("calls") or 0) >= 1 for w in clock_wakes),
             2: bool(saturday),
             3: bool(kill and kill.get("lit")),
             4: bool(fence.get("after") and fence["after"].get("lit")),
-            5: False, 6: False,                                 # phase 3
+            5: bool(graph.get("after") and graph["after"].get("lit")),
+            6: bool(budget.get("after") and budget["after"].get("lit")),
         }
         lit[7] = all(lit[k] for k in range(1, 7))
         v = venue()
@@ -189,7 +293,7 @@ def read() -> dict[str, Any]:
             "clock_runs": len(clock_wakes), "clock_calls": last_clock["calls"] if last_clock else None,
             "before": next((w for w in clock_wakes if "recall" not in (w.get("tools") or [])), None),
             "after": saturday[-1] if saturday else None,
-            "kill": kill, "fence": fence,
+            "kill": kill, "fence": fence, "graph": graph, "budget": budget,
             "venue": v, "mode": env.MODE, "wake_message": env.WAKE_MESSAGE, "error": None,
         }
         _last_good = out

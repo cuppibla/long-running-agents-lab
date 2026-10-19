@@ -56,6 +56,8 @@ code { font-family: var(--font-mono), monospace; font-size: .92em; }
 @keyframes riseIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes glow { 0%,100% { box-shadow: 0 0 0 2px var(--amber), 0 0 16px rgba(242,181,68,.5); } 50% { box-shadow: 0 0 0 4px var(--amber), 0 0 28px rgba(242,181,68,.8); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
+/* ?still=1 (capture): no transitions — headless Chrome's virtual time can freeze a 180 ms border fade mid-way */
+.wrap.still *, .wrap.still *::before, .wrap.still *::after { transition: none !important; animation: none !important; }
 .copy { flex: none; font-family: var(--font-mono), monospace; font-size: 10px; letter-spacing: .06em; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line-2); background: #fff; color: var(--sub); }
 .copy:hover { border-color: var(--amber-ink); color: var(--ink); }
 .copy.on { border-color: var(--amber); background: var(--amber-soft); color: var(--amber-ink); }
@@ -166,6 +168,10 @@ code { font-family: var(--font-mono), monospace; font-size: .92em; }
 .wire text.gl { font-size: 8px; fill: var(--faint); }
 .wire .gate.lit + text.g + text.gl { fill: var(--mint-ink); }
 .wire .lg { margin-top: 6px; font-size: 11.5px; color: var(--sub); line-height: 1.45; }
+.wire text.door { font-size: 8.5px; fill: var(--faint); }
+.wire text.door.lit { fill: var(--mint-ink); font-weight: 700; }
+.wire tspan.budget { fill: var(--amber-ink); } .wire tspan.budget.lit { fill: var(--mint-ink); font-weight: 700; }
+.wire .edge.back.answered { stroke-width: 2.2; }
 
 /* ── chapter panel ── */
 .panel { padding: 16px 20px 18px; display: grid; gap: 12px; min-width: 0; }

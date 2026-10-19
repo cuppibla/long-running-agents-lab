@@ -3,6 +3,12 @@
     /api/say   a person typed on the stage      → handlers.wake(…) with budget.mark_attended()
     /api/wake  the clock (or the venue) posted   → the same handler, marked unattended
 
+From chapter V on, the clock's door has one more thing to decide: if the stage's
+conversation is parked on an `adk_request_input` (the graph waiting at
+check_front), the clock's sentence is the ANSWER to that interrupt and goes into
+the stage's session — not into a fresh wake-… session. `handlers.pending_interrupt`
+is the test; `state.STATE["stage"]` says which session is the stage's.
+
 That is the source lab's `monstertix/server.py` collapsed into this process:
 the handler is the vendored `monstertix/handlers.py`, untouched; what this file
 adds is where the services live and what gets written down afterwards.
@@ -15,6 +21,7 @@ a session in adk web, and the other way round.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib
 import logging
 import re
@@ -79,6 +86,34 @@ def tool_names(agent) -> list[str]:
 
 _CALLED = re.compile(r"\[server\]\s+called\s+(\S+)")
 _SAID = re.compile(r"\[server\]\s+said\s+(.*)")
+#: the graph's nodes narrate themselves with print(): "  [open]        3am. Nobody is awake. Budget: …"
+_NODE = re.compile(r"^\s{2}\[([a-z_]+)\]\s+(.*)$")
+_POSITION = re.compile(r"#([\d,]+)")
+
+
+class _Tee:
+    """stdout during one run: every line still goes to the real stdout, and the
+    graph's `[node] …` lines are also handed to `on_node`. The run holds `_busy`,
+    so nothing else of ours prints meanwhile."""
+
+    def __init__(self, real, on_node):
+        self.real, self.on_node, self._buf = real, on_node, ""
+
+    def write(self, data: str) -> int:
+        self.real.write(data)
+        self._buf += data
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            m = _NODE.match(line)
+            if m:
+                self.on_node(m.group(1), m.group(2).strip())
+        return len(data)
+
+    def flush(self) -> None:
+        self.real.flush()
+
+    def __getattr__(self, name):
+        return getattr(self.real, name)
 
 
 async def run(message: str, *, session_id: str | None, attended: bool, source: str, who: str = "you") -> dict[str, Any]:
@@ -104,18 +139,41 @@ async def run(message: str, *, session_id: str | None, attended: bool, source: s
         runner = Runner(app=mod.app, session_service=sessions(), artifact_service=artifacts(),
                         memory_service=memory.memory_service)
 
+        # The clock's door with no session named: is the stage's conversation parked on a
+        # question? Then this sentence answers it (chapter V: the clock answers check_front;
+        # chapter VI: the same, with the budget already agreed in that session).
+        answered: str | None = None
+        if not session_id and not attended and kind == "Workflow":
+            stage_sid = (state.STATE.get("stage") or {}).get("session_id")
+            if stage_sid and await handlers.pending_interrupt(sessions(), APP, USER, stage_sid):
+                session_id = stage_sid
+        if session_id:
+            answered = await handlers.pending_interrupt(sessions(), APP, USER, session_id)
+        before_db = await session_calls(session_id) if session_id else {"events": 0}
+        n0 = before_db.get("events") or 0
+
         t0 = time.time()
         before = _orders()
         ep = events.start_episode(source, who=who, attended=attended, agent=kind)
-        events.emit("run_asked", who=who if attended else "the clock", text=message, source=source, attended=attended)
+        events.emit("run_asked", who=who if attended else "the clock", text=message, source=source, attended=attended,
+                    session_id=session_id, answers=answered)
+        if answered:
+            events.emit("interrupt_answered", id=answered, session_id=session_id, source=source,
+                        by="the clock" if not attended else who)
         called: list[str] = []
+        nodes: list[dict] = []
+
+        def _node(name: str, text: str) -> None:
+            nodes.append({"node": name, "text": text[:240]})
+            events.emit("node_line", node=name, text=text[:240], source=source)
 
         def _log(line: str) -> None:
             m = _CALLED.search(line)
             if m:
                 name = m.group(1)
                 called.append(name)
-                events.emit("tool_called", name=name, source=source)
+                if name != "set_model_response":            # the picker's output_schema pseudo-tool is not a call worth a line
+                    events.emit("tool_called", name=name, source=source)
                 return
             m = _SAID.search(line)
             if m:
@@ -125,8 +183,9 @@ async def run(message: str, *, session_id: str | None, attended: bool, source: s
                 events.emit("runner_line", text=line.strip()[:200], source=source)
 
         try:
-            out = await handlers.wake(runner, sessions(), APP, USER, message=message,
-                                      session_id=session_id, log=_log)
+            with contextlib.redirect_stdout(_Tee(sys.stdout, _node)):
+                out = await handlers.wake(runner, sessions(), APP, USER, message=message,
+                                          session_id=session_id, log=_log)
         except Exception as exc:                                   # noqa: BLE001
             log.warning("run failed: %s", exc)
             events.emit("error", message=f"{type(exc).__name__}: {exc}"[:300], source=source)
@@ -139,36 +198,44 @@ async def run(message: str, *, session_id: str | None, attended: bool, source: s
                 pass
 
         sid = out["session_id"]
-        db = await session_calls(sid)                       # lab.db is the receipt; the log is a hint
-        calls = [c for c in (db.get("calls") or []) if c != "adk_request_input"] or [c for c in called if c != "adk_request_input"]
-        turn_tools = [c for c in called if c != "adk_request_input"]            # this run only; `tools` is the whole session
+        db = await session_calls(sid, since=n0)             # lab.db is the receipt; the log is a hint
+        turn = db.get("turn") or {}
+        calls = [c for c in (db.get("calls") or []) if c not in NOT_TOOLS] or [c for c in called if c not in NOT_TOOLS]
+        turn_tools = [c for c in called if c not in NOT_TOOLS]                   # this run only; `tools` is the whole session
         orders_new = [o for o in _orders() if o["id"] not in {b["id"] for b in before}]
         reply = out["said"][-1] if out["said"] else ""
         this_turn = (db.get("invocations") or 1) - 1
         for r in db.get("responses") or []:
-            if r.get("tool") != "purchase" or r.get("turn") != this_turn:
+            if r.get("tool") != "purchase" or (r.get("turn") != this_turn and r.get("invocation") not in (turn.get("invocations") or [])):
                 continue
             if r.get("by") == "fence":
                 events.emit("fence_refused", reason=r.get("reason"), actual=r.get("actually_available"), believed=r.get("believed_available"), source=source)
             elif r.get("status") == 409:
                 events.emit("venue_409", error=r.get("error"), section=r.get("section"), source=source)
+        if out["awaiting_input"] and turn.get("interrupts"):
+            events.emit("run_parked", id=turn["interrupts"][-1], text=reply[:200], session_id=sid, source=source)
         events.emit("run_replied", who="the agent", text=reply[:400], tools=calls, awaiting=out["awaiting_input"],
-                    session_id=sid, source=source, orders=[_short_order(o) for o in orders_new])
+                    session_id=sid, source=source, orders=[_short_order(o) for o in orders_new], answered=answered,
+                    nodes=turn.get("nodes") or [])
         events.emit("episode_done")
         from lab import progress  # noqa: PLC0415 — progress imports this module
+        m = _POSITION.search(" ".join(n["text"] for n in nodes if n["node"] == "check_front") or reply)
         row = state.push("wakes", {
             "source": source, "attended": attended, "who": who, "session_id": sid, "message": message,
             "said": [s[:400] for s in out["said"]], "reply": reply[:400], "awaiting": out["awaiting_input"],
             "tools": calls, "calls": len(calls), "turn_tools": turn_tools, "tools_in_file": tools_in_file, "kind": kind,
             "orders_new": [_short_order(o) for o in orders_new], "boot_id": state.BOOT_ID,
             "elapsed": round(time.time() - t0, 1), "code": progress.code_facts(),
-            "db": {k: db.get(k) for k in ("events", "interrupts", "compactions", "invocations", "state", "responses")},
+            "db": {k: db.get(k) for k in ("events", "interrupts", "compactions", "invocations", "state", "responses", "interrupt_ids")},
             "tickets": _tickets(),
+            # chapters V and VI: what THIS run answered, asked and walked
+            "answered": answered, "turn_interrupts": turn.get("interrupts") or [], "turn_nodes": turn.get("nodes") or [],
+            "nodes": nodes, "position": int(m.group(1).replace(",", "")) if m else None,
             "artifacts": _artifact_files(sid), "memory_facts": progress.memory_facts(),
         })
         if attended:
             state.set_("stage", {"session_id": sid, "ts": row["ts"]})
-        return {"ok": True, "episode": ep, **out, **{k: row[k] for k in ("tools", "calls", "turn_tools", "orders_new", "boot_id", "reply", "tools_in_file", "kind", "elapsed", "awaiting", "db", "tickets")}}
+        return {"ok": True, "episode": ep, **out, **{k: row[k] for k in ("tools", "calls", "turn_tools", "orders_new", "boot_id", "reply", "tools_in_file", "kind", "elapsed", "awaiting", "db", "tickets", "answered", "turn_interrupts", "turn_nodes", "nodes", "position")}}
 
 
 def _artifact_files(session_id: str) -> list[str]:
@@ -199,37 +266,72 @@ def _short_order(o: dict) -> dict:
     return {k: o.get(k) for k in ("id", "event_id", "section", "seats", "unit_price", "total", "weekday", "city", "created_at")}
 
 
-async def session_calls(session_id: str) -> dict:
-    """What lab.db holds for one session: function calls by name, interrupts, compactions.
-    Read through the session service, not raw SQL."""
+def _node_of(ev) -> str | None:
+    """The graph node an event came from — the last segment of node_info.path
+    ("concert_nightly@1/check_front@2" → "check_front"). None for a plain agent."""
+    info = getattr(ev, "node_info", None)
+    path = getattr(info, "path", "") or ""
+    if "/" not in path:
+        return None
+    return path.rsplit("/", 1)[1].split("@", 1)[0] or None
+
+
+async def session_calls(session_id: str, since: int = 0) -> dict:
+    """What lab.db holds for one session: function calls by name, interrupts (asked and
+    answered, by id), compactions, the graph nodes that ran — and the same for the slice
+    of events from index `since` on (`turn`: this run). Read through the session
+    service, not raw SQL."""
     svc = sessions()
     s = await svc.get_session(app_name=APP, user_id=USER, session_id=session_id)
     if s is None:
-        return {"exists": False}
+        return {"exists": False, "events": 0}
     calls, interrupts, compactions, responses = [], 0, 0, []
     invocations: list[str] = []
-    for ev in s.events or []:
+    asked: list[dict] = []                 # every adk_request_input, in order: {id, answered}
+    turn = {"tools": [], "interrupts": [], "answered": [], "nodes": [], "invocations": []}
+    for i, ev in enumerate(s.events or []):
         if ev.invocation_id and ev.invocation_id not in invocations:
             invocations.append(ev.invocation_id)
+        in_turn = i >= since
+        if in_turn and ev.invocation_id and ev.invocation_id[:12] not in turn["invocations"]:
+            turn["invocations"].append(ev.invocation_id[:12])
+        node = _node_of(ev)
+        if in_turn and node and node not in turn["nodes"]:
+            turn["nodes"].append(node)
         for part in (ev.content.parts if ev.content else []) or []:
             fc = getattr(part, "function_call", None)
             if fc:
                 if fc.name == "adk_request_input":
                     interrupts += 1
-                else:
+                    asked.append({"id": fc.id, "answered": False, "node": node})
+                    if in_turn:
+                        turn["interrupts"].append(fc.id)
+                elif fc.name not in NOT_TOOLS:
                     calls.append(fc.name)
+                    if in_turn:
+                        turn["tools"].append(fc.name)
             fr = getattr(part, "function_response", None)
+            if fr and fr.name == "adk_request_input":
+                for a in asked:
+                    if a["id"] == fr.id:
+                        a["answered"] = True
+                if in_turn:
+                    turn["answered"].append(fr.id)
             if fr and fr.name in RECEIPT_TOOLS:
                 responses.append(_receipt(fr.name, fr.response, ev.invocation_id, invocations.index(ev.invocation_id) if ev.invocation_id in invocations else None))
         if ev.actions and getattr(ev.actions, "compaction", None):
             compactions += 1
     return {"exists": True, "calls": calls, "interrupts": interrupts, "compactions": compactions,
             "events": len(s.events or []), "invocations": len(invocations), "responses": responses,
+            "interrupt_ids": asked[-12:], "turn": turn,
             "state": {k: v for k, v in (s.state or {}).items() if not k.startswith("temp:")}}
 
 
 #: the tool responses a receipt keeps — what the venue (or fence.py) handed the model
 RECEIPT_TOOLS = ("join_queue", "check_queue", "purchase")
+#: function calls that are ADK's own, not the agent's tools: the interrupt, and the
+#: output_schema pseudo-tool the picker node answers through
+NOT_TOOLS = ("adk_request_input", "set_model_response")
 
 
 def _receipt(name: str, response, invocation_id: str | None, turn: int | None) -> dict:

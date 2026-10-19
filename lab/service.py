@@ -5,7 +5,8 @@
     /api/progress         which chapter is lit — read from your files + what ran
     /api/events           SSE: the event log (recent history, then live) · /api/log: the same, once
     /api/say              POST {text, session_id?}: a person on the stage → the agent runs, attended
-    /api/wake             POST {message?, session_id?}: the clock's door → the same agent, unattended
+    /api/wake             POST {message?, session_id?}: the clock's door → the same agent, unattended;
+                          with no session id it answers the stage's parked run (V, VI) or opens a wake-… session
     /api/session/new      POST: a fresh stage session id (nothing is deleted)
     /api/code             GET / POST: the in-page editor (two files, syntax-checked)
     /api/job              POST {kind} / GET ?kind= / DELETE ?kind=: wake · seed
@@ -113,7 +114,9 @@ async def post_say(req: Request) -> dict:
 
 @app.post("/api/wake")
 async def post_wake(req: Request) -> dict:
-    """The clock posted (monstertix/clock.py, or the venue's DROP THE PRESALE). Nobody is there."""
+    """The clock posted (monstertix/clock.py, or the venue's DROP THE PRESALE). Nobody is there.
+    If the stage's conversation is parked on an adk_request_input, this sentence answers it
+    (lab/runner.py decides; handlers.pending_interrupt is the test)."""
     body = {}
     with contextlib.suppress(Exception):
         body = await req.json()

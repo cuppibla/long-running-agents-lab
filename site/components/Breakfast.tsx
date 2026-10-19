@@ -12,15 +12,15 @@ export default function Breakfast({ p, name }: { p: Progress | null; name: strin
   const before = p?.before;
   const after = p?.after;
   const o = after?.orders_new?.[0];
-  const k = p?.kill; const fa = p?.fence?.after;
+  const k = p?.kill; const fa = p?.fence?.after; const g = p?.graph?.after; const b = p?.budget?.after;
   const pos = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `#${n.toLocaleString()}`);
   const rows: [string, string, string, boolean][] = [
     ["I", "the clock", clock ? `${clock.calls} calls · nobody typed` : "—", Boolean(lit["1"])],
     ["II", "where a fact lives", after && o ? `${o.weekday} ×${o.seats} · ${after.memory_facts ?? ""} facts read` : before ? "a Tuesday · 0 facts read" : "—", Boolean(lit["2"])],
     ["III", "the kill", k ? `1 ticket · 2 boots · ${pos(k.positions[0])} → ${pos(k.positions[1])}` : "—", Boolean(lit["3"])],
     ["IV", "old news", fa ? `refused before the venue${fa.order ? ` · ${fa.order.section} · $${Math.round(fa.order.total)}` : ""}` : "—", Boolean(lit["4"])],
-    ["V", "the graph", lit["5"] ? `${p?.clock_runs} wake-ups · 1 ticket` : "—", Boolean(lit["5"])],
-    ["VI", "the budget", lit["6"] ? "inside the limit you typed" : "—", Boolean(lit["6"])],
+    ["V", "the graph", g ? `${g.wakeups} wake-ups · ${g.one_ticket ? "1 ticket" : `${g.tickets.join("/")} tickets`}${g.order ? ` · ${g.order.section} · $${Math.round(g.order.total)}` : ""}` : "—", Boolean(lit["5"])],
+    ["VI", "the budget", b?.order && b.sentence ? `$${Math.round(b.order.unit_price)} a seat inside “${b.sentence.length > 38 ? b.sentence.slice(0, 36) + "…" : b.sentence}”` : b?.sentence ? `agreed: “${b.sentence.slice(0, 40)}”` : "—", Boolean(lit["6"])],
   ];
   const torn = rows.filter((r) => r[3]).length;
   return (
@@ -44,7 +44,7 @@ export default function Breakfast({ p, name }: { p: Progress | null; name: strin
           <tr><td>🔬 the workbench</td><td>one Cloud Run service</td><td>a Dockerfile and a main.py</td></tr>
         </tbody></table>
         <div className="concept">Self-study, in the codelab: the <b>Idempotency-Key</b> (press BREAK THE NEXT PURCHASE and read the venue’s <code>duplicate suppressed</code>) · the <code>budget_split</code> sub-agent with <code>include_contents=&quot;none&quot;</code> · the three artifact URIs · the source lab’s <code>deploy-agent.sh</code>, for a project of your own.</div>
-        <div className="dim mono" style={{ fontSize: 10.5 }}>{CHAPTERS.filter((c) => c.phase > 1).map((c) => c.roman).join(" · ")} tear in the next build phases.</div>
+        {CHAPTERS.some((c) => c.phase > 3) && <div className="dim mono" style={{ fontSize: 10.5 }}>{CHAPTERS.filter((c) => c.phase > 3).map((c) => c.roman).join(" · ")} tear in the next build phase.</div>}
       </div>
     </div>
   );
