@@ -30,7 +30,7 @@ export default function ChapterPage({ page }: { page: Page }) {
   return (
     <Shell slug={page.slug}>
       <In><figure className="scene"><img src={page.scene} alt="" /></figure></In>
-      <In d={1}><div className="head"><div><Kicker color={page.color}>{page.kicker}</Kicker><h1>{page.title}</h1><Html as="p" html={page.blurb} /></div></div></In>
+      <In d={1}><div className="head"><div><Kicker color={page.color}>{page.kicker}</Kicker><h1>{page.title}</h1></div></div></In>
       {page.concept && (
         <In d={2}><section className="card"><div className={c.n === 2 || c.n === 5 ? "two stack" : "two"}>
           <div><Kicker>The concept</Kicker><h2>{page.concept.h2}</h2><Html as="p" className="blurb" html={page.concept.body} />

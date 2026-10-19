@@ -1,6 +1,6 @@
 /** The eight pages, in the language of VibeStudio Haunted Edition: one chapter per page,
- *  one colour per chapter, a 16:9 scene on top, the concept said term-first, then the
- *  stage, your edit, before you run, run it, verify. The numbers and the steps come from
+ *  one colour per chapter, a 16:9 scene on top, a title that is the chapter's term, the
+ *  concept said term-first, then the stage, your edit, before you run, run it, verify. The numbers and the steps come from
  *  lib/chapters.ts (locked, measured on gemini-2.5-flash); this file holds the page copy. */
 import { CHAPTERS, type Chapter } from "./chapters";
 
@@ -16,7 +16,7 @@ export const LEGEND: [string, string][] = [["function node", KIND.function], ["a
 
 export type Page = {
   slug: Slug; n: number; roman: string; label: string; color: string; scene: string;
-  kicker: string; title: string; blurb: string;                                   // html
+  kicker: string; title: string;                                                  // the title is a few words of terminology — the chapter's theme
   concept?: { h2: string; body: string; chips: [string, string][] };               // html body · [label, colour]
   stageH2?: string;
   edit?: { title: string; intro: string };                                         // html
@@ -27,13 +27,11 @@ export type Page = {
 
 export const PAGES: Page[] = [
   { slug: "story", n: 0, roman: "0", label: "The night", color: C.cyan, scene: "/art/haunted/hero.jpg",
-    kicker: "Chapter 0 · the night", title: "An agent that waits in line while you sleep.",
-    blurb: "The queue is 14,000 long and your turn comes at 3am. This agent takes your place in it: it wakes on its own, remembers last week, survives a kill, re-reads the world before it spends, and buys inside a limit you agreed.",
+    kicker: "Chapter 0 · the night", title: "Long-running agents",
     cta: "Wake it at 3am", next: "clock" },
 
   { slug: "clock", n: 1, roman: "I", label: "I · the clock", color: C.amber, scene: "/art/haunted/scene-clock.jpg",
-    kicker: "Chapter I · the clock · press one", title: "You told it to buy the moment the presale opens. It agreed. Why did nothing happen?",
-    blurb: "An instruction is read when a message arrives — never between messages. Being awake takes a <b>trigger</b> and a <b>triggerer</b>.",
+    kicker: "Chapter I · the clock · press one", title: "Trigger & triggerer",
     concept: { h2: "A prompt cannot start itself.",
       body: "<i>Keep checking</i> describes something happening <b>over time</b>, and the only thing that runs is the turn you just sent. So something outside the agent has to call it — eleven lines of Python with a clock. “Set a timer”, “check every five minutes”, “act autonomously” all fail the same way.",
       chips: [["the trigger = POST /api/wake", C.cyan], ["the triggerer = clock.py --in 10", C.amber], ["later = Cloud Scheduler", C.green]] },
@@ -43,8 +41,7 @@ export const PAGES: Page[] = [
     cta: "Where a fact lives", next: "memory" },
 
   { slug: "memory", n: 2, roman: "II", label: "II · where a fact lives", color: C.purple, scene: "/art/haunted/scene-memory.jpg",
-    kicker: "Chapter II · where a fact lives · edit one", title: "At 3am it asked which show. You told it about Sam last week — where did that go?",
-    blurb: "Four places a fact can live — <b>recall()</b> reads the one that survives the database.",
+    kicker: "Chapter II · where a fact lives · edit one", title: "Context lifetime & compaction",
     concept: { h2: "The conversation is the worst place to keep a fact.",
       body: "Every three turns ADK replaces the conversation with a <b>paraphrase</b> you never wrote. Anything kept in state — <code>user:prefs</code>, <code>budget_plan</code> — comes back exactly as it went in.",
       chips: [["temp: · one invocation", C.muted], ["session state · this booking", C.green], ["user: · every session", C.purple], ["memory/userx.md · recall()", C.green], ["compaction · a paraphrase", C.red]] },
@@ -55,8 +52,7 @@ export const PAGES: Page[] = [
     cta: "The kill", next: "kill" },
 
   { slug: "kill", n: 3, roman: "III", label: "III · the kill", color: C.red, scene: "/art/haunted/scene-kill.jpg",
-    kicker: "Chapter III · the kill · edit one", title: "The queue is 14,203 long. Your laptop will sleep before it reaches the front. What survives?",
-    blurb: "<code>join_queue</code> returns a <b>handle</b> to unfinished work. The ticket lives in lab.db, not in the process.",
+    kicker: "Chapter III · the kill · edit one", title: "Long-running tools & resumability",
     concept: { h2: "A text message never resumes an invocation. The session does the surviving.",
       body: "The session store already holds <code>queue_ticket</code>, so a new process calls <code>check_queue</code> instead of joining again — one ticket, two boots. <code>check_queue</code> is not long-running because it returns a <b>complete answer</b>; wrapped, the run would park at “at the front, buy now”.",
       chips: [["LongRunningFunctionTool", C.red], ["ResumabilityConfig(is_resumable=True)", C.red], ["lab.db · sqlite", C.green]] },
@@ -67,8 +63,7 @@ export const PAGES: Page[] = [
     cta: "Old news", next: "news" },
 
   { slug: "news", n: 4, roman: "IV", label: "IV · old news", color: C.blue, scene: "/art/haunted/scene-news.jpg",
-    kicker: "Chapter IV · old news · edit one", title: "It came back from the wait holding a seat map. Those seats sold twelve minutes in. Why did it buy anyway?",
-    blurb: "A <code>before_tool_callback</code> re-reads the world in the instant before <b>purchase</b> — and a returned dict skips the tool.",
+    kicker: "Chapter IV · old news · edit one", title: "Stale data & tool callbacks",
     concept: { h2: "An agent holding an old fact does not ask. It acts.",
       body: "A <i>missing</i> fact makes an agent ask; an <i>old</i> one makes it act — the wrong thing is present. As shipped the venue says no with a 409 after the attempt reached it; with the fence, <code>fence.py</code> answers <b>stale_plan</b> first and the venue is never called.",
       chips: [["before_tool_callback", C.blue], ["returns a dict → the tool is skipped", C.blue], ["409 sold_out · the venue", C.red], ["Idempotency-Key", C.muted]] },
@@ -79,8 +74,7 @@ export const PAGES: Page[] = [
     cta: "The graph", next: "graph" },
 
   { slug: "graph", n: 5, roman: "V", label: "V · the graph", color: C.purple, scene: "/art/haunted/scene-graph.jpg",
-    kicker: "Chapter V · the graph · swap one", title: "At 3am, who decides the order of things? The model — nearly every time.",
-    blurb: "A <code>Workflow</code> makes the rules <b>function nodes</b> and keeps agent nodes only where a decision lives.",
+    kicker: "Chapter V · the graph · swap one", title: "Workflow & interrupts",
     concept: { h2: "Functions for rules, agents for judgement, one node that waits.",
       body: "<code>check_front</code> returns a <b>RequestInput</b>: the run parks, the process may exit, and every wake-up re-enters from <code>START</code> — <code>rerun_on_resume=False</code> is why it does not pick again or take a second ticket. An agent node cannot be first; <code>open_the_night</code> says the sentence a person would have said.",
       chips: [["Workflow · edges=[(START, *NIGHT)]", C.purple], ["RequestInput · the run parks", C.amber], ["rerun_on_resume=False", C.muted], ["adk_request_input · its own answer box", C.amber]] },
@@ -91,8 +85,7 @@ export const PAGES: Page[] = [
     cta: "The budget", next: "budget" },
 
   { slug: "budget", n: 6, roman: "VI", label: "VI · the budget", color: C.amber, scene: "/art/haunted/scene-budget.jpg",
-    kicker: "Chapter VI · the budget · edit one", title: "It can buy on its own now. Who said how much? Chapter V spent a string in nightly.py that nobody agreed to.",
-    blurb: "The same <code>RequestInput</code> that waits for a venue can wait for a <b>person</b>.",
+    kicker: "Chapter VI · the budget · edit one", title: "Human in the loop",
     concept: { h2: "A limit in your own words, living exactly as long as the conversation.",
       body: "<code>agree_budget</code> stores <b>the sentence</b>, not a schema, in session state — a limit for this booking, not forever. <code>someone_is_there()</code> is a fact about the request: at 3am the node takes the standing budget instead of asking a question nobody will answer.",
       chips: [["RequestInput · aimed at you", C.amber], ["budget:ask · budget:confirm", C.amber], ["state.budget · your sentence, verbatim", C.green], ["someone_is_there() · per request", C.cyan]] },
@@ -103,8 +96,7 @@ export const PAGES: Page[] = [
     cta: "Breakfast", next: "breakfast" },
 
   { slug: "breakfast", n: 7, roman: "VII", label: "VII · breakfast", color: C.green, scene: "/art/haunted/scene-breakfast.jpg",
-    kicker: "Chapter VII · breakfast · the message", title: "Six stubs. What did it do while you slept?",
-    blurb: "Every line is a <b>receipt</b>, never a checklist — and the agent you built is the one you would deploy.",
+    kicker: "Chapter VII · breakfast · the message", title: "Receipts & deployment",
     cta: "Back to the night", next: "story" },
 ];
 

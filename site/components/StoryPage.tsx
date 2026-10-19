@@ -27,7 +27,7 @@ export default function StoryPage() {
   return (
     <Shell slug="story">
       <In><div className="head art">
-        <div><Kicker color={page.color}>{page.kicker}</Kicker><h1>{page.title}</h1><Html as="p" html={page.blurb} /></div>
+        <div><Kicker color={page.color}>{page.kicker}</Kicker><h1>{page.title}</h1></div>
         <div className="hero"><img src={page.scene} alt="" /></div>
       </div></In>
       <In d={1}><section className="card"><Kicker>Every night, the same six things</Kicker>

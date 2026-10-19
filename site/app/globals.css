@@ -106,7 +106,7 @@ main.page > * { min-width: 0; }
 .scene img { display: block; width: 100%; aspect-ratio: 16/9; object-fit: cover; background: linear-gradient(135deg, #f6e3d6, #efd9e6); }
 .head { display: grid; gap: 2rem; align-items: center; } .head.art { grid-template-columns: 1.15fr 1fr; }
 /* the type scale, five steps: h1 30 · h2 22 · body 16 · note 14 · label 11 (mono). Body is ink; grey is for notes and labels only. */
-.head h1 { font-family: var(--font-display); font-weight: 800; letter-spacing: -.02em; font-size: 30px; line-height: 1.18; margin: 12px 0 0; max-width: 44rem; text-wrap: balance; }
+.head h1 { font-family: var(--font-display); font-weight: 800; letter-spacing: -.02em; font-size: 32px; line-height: 1.15; margin: 10px 0 0; max-width: 44rem; text-wrap: balance; }
 .head p { font-size: 16px; color: var(--fg); margin: 10px 0 0; max-width: 40rem; line-height: 1.55; text-wrap: balance; }
 .head p b, .head p code { color: var(--fg); }
 .head .hero { border-radius: 24px; overflow: hidden; border: 1px solid var(--hairline); box-shadow: var(--shadow); } .head .hero img { display: block; width: 100%; aspect-ratio: 16/10; object-fit: cover; background: linear-gradient(135deg, #f6e3d6, #efd9e6); }

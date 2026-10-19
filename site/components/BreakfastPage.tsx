@@ -34,7 +34,7 @@ export default function BreakfastPage() {
   return (
     <Shell slug="breakfast">
       <In><figure className="scene"><img src={page.scene} alt="" /></figure></In>
-      <In d={1}><div className="head"><div><Kicker color={page.color}>{page.kicker}</Kicker><h1>{page.title}</h1><Html as="p" html={page.blurb} /></div></div></In>
+      <In d={1}><div className="head"><div><Kicker color={page.color}>{page.kicker}</Kicker><h1>{page.title}</h1></div></div></In>
       <In d={2}><section className="card">
         <div className="runrow">
           <div><Kicker>Verify</Kicker><h2>{torn === 6 ? "Six of six. The message it left you." : `${torn} of 6 so far${missing.length ? ` · ${missing.join(" · ")} still unlit` : ""}.`}</h2><p className="blurb">Every line is a receipt read from lab.db, the job log and the venue. {torn < 6 ? "Go back to an unlit chapter and run it; the line fills in here." : "Waking up was never the hard part."}</p></div>
