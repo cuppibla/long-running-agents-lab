@@ -37,7 +37,7 @@ export default function StoryPage() {
             <div className="chips">{CHIPS.map(([l, col]) => <span key={l} className="chip" style={{ "--c": col } as React.CSSProperties}>{l}</span>)}</div>
             <Html as="p" className="ethics" html={SHOW.ethics} /></div>
         </div></section></In>
-      <In d={2}><section className="card"><Kicker>The graph you finish with · each node names the chapter that adds it</Kicker><div style={{ marginTop: 14 }}><FullGraph p={p} /></div></section></In>
+      <In d={2}><section className="card"><Kicker>The graph you finish with</Kicker><div style={{ marginTop: 14 }}><FullGraph p={p} /></div></section></In>
       <In d={3}><div className="two">
         <section className="card" style={{ "--c": page.color } as React.CSSProperties}><Kicker>Your inputs, per night</Kicker>
           <ol className="list">{INPUTS.map((t, i) => <li key={t}><span className="n ball">{i + 1}</span><span>{t}</span></li>)}</ol>
